@@ -1,0 +1,26 @@
+# Environment
+.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Test / Coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Docker volumes (local dev)
+mongo_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,2 @@
+class ScopeAgent:
+    pass

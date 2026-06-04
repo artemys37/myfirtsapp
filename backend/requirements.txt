@@ -1,0 +1,9 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+motor>=3.4.0
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+httpx>=0.27.0
+asyncssh>=2.14.0
+aioftp>=0.22.0
+python-multipart>=0.0.9

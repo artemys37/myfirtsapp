@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NetAudit — Reconnaissance Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --acid: #00ff9d;
+      --acid-dim: #00ff9d33;
+      --red: #ff3b5c;
+      --orange: #ff7b00;
+      --yellow: #ffd600;
+      --bg: #080c10;
+      --surface: #0d1117;
+      --border: #1e2d3d;
+      --text: #c9d1d9;
+      --muted: #4a5568;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; min-height: 100vh; }
+    .mono { font-family: 'Share Tech Mono', monospace; }
+
+    /* Scanline overlay */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 999; pointer-events: none;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.08) 2px, rgba(0,0,0,.08) 4px);
+    }
+
+    /* Grid background */
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(0,255,157,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,157,.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Glitch text */
+    @keyframes glitch {
+      0%,100% { clip-path: inset(0 0 100% 0); transform: translate(0); }
+      10% { clip-path: inset(10% 0 80% 0); transform: translate(-2px, 1px); }
+      20% { clip-path: inset(40% 0 50% 0); transform: translate(2px, -1px); }
+      30% { clip-path: inset(70% 0 20% 0); transform: translate(-1px, 2px); }
+    }
+    .glitch { position: relative; }
+    .glitch::after {
+      content: attr(data-text); position: absolute; left: 0; top: 0;
+      color: var(--red); animation: glitch 4s infinite; opacity: .6;
+    }
+
+    /* Pulse dot */
+    @keyframes pulse-dot {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .4; transform: scale(.8); }
+    }
+    .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+    /* Scan animation */
+    @keyframes scan-line {
+      0% { top: 0; }
+      100% { top: 100%; }
+    }
+
+    /* Card hover */
+    .stat-card {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .stat-card:hover { border-color: var(--acid); box-shadow: 0 0 20px var(--acid-dim); }
+
+    /* Progress bar */
+    .bar-fill { transition: width 1s cubic-bezier(.4,0,.2,1); }
+
+    /* Severity badges */
+    .badge-critical { background: #ff1a3433; color: #ff3b5c; border: 1px solid #ff3b5c55; }
+    .badge-high     { background: #ff7b0033; color: #ff7b00; border: 1px solid #ff7b0055; }
+    .badge-medium   { background: #ffd60033; color: #ffd600; border: 1px solid #ffd60055; }
+    .badge-low      { background: #00ff9d22; color: #00ff9d; border: 1px solid #00ff9d44; }
+    .badge-info     { background: #1e2d3d;   color: #8b949e; border: 1px solid #30363d; }
+
+    /* Table rows */
+    .trow { border-bottom: 1px solid var(--border); transition: background .15s; }
+    .trow:hover { background: rgba(0,255,157,.04); }
+
+    /* Nav */
+    .nav-item { border-bottom: 2px solid transparent; transition: border-color .2s, color .2s; cursor: pointer; }
+    .nav-item.active, .nav-item:hover { border-color: var(--acid); color: var(--acid); }
+
+    /* Button */
+    .btn-primary {
+      background: var(--acid); color: #080c10; font-family: 'Share Tech Mono', monospace;
+      font-weight: 700; letter-spacing: .05em; border: none; cursor: pointer;
+      transition: box-shadow .2s, transform .1s;
+    }
+    .btn-primary:hover { box-shadow: 0 0 24px var(--acid); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-ghost {
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+      cursor: pointer; transition: border-color .2s, color .2s;
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .btn-ghost:hover { border-color: var(--acid); color: var(--acid); }
+
+    /* Input */
+    .input-field {
+      background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      font-family: 'Share Tech Mono', monospace; transition: border-color .2s, box-shadow .2s;
+    }
+    .input-field:focus { outline: none; border-color: var(--acid); box-shadow: 0 0 12px var(--acid-dim); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--acid); }
+
+    /* Page sections */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Typewriter */
+    @keyframes type { from { width: 0; } to { width: 100%; } }
+    @keyframes blink { 50% { border-color: transparent; } }
+    .typewriter {
+      overflow: hidden; white-space: nowrap;
+      border-right: 2px solid var(--acid);
+      animation: type 1.5s steps(40) forwards, blink .75s step-end infinite;
+    }
+
+    /* Fade in */
+    @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+    .fade-up { animation: fadeUp .4s ease forwards; }
+
+    /* Loading spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin .8s linear infinite; }
+
+    /* Terminal log */
+    .log-entry { border-left: 2px solid var(--border); padding-left: .75rem; }
+    .log-entry.success { border-color: var(--acid); }
+    .log-entry.error   { border-color: var(--red); }
+    .log-entry.warn    { border-color: var(--orange); }
+  </style>
+</head>
+<body class="grid-bg">
+
+<!-- ═══════════════════════ TOP BAR ═══════════════════════ -->
+<header class="sticky top-0 z-50 border-b border-[var(--border)] bg-[#080c10ee] backdrop-blur-sm">
+  <div class="max-w-screen-2xl mx-auto px-6 h-14 flex items-center justify-between">
+
+    <!-- Logo -->
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 relative">
+        <div class="absolute inset-0 border-2 border-[var(--acid)] rotate-45"></div>
+        <div class="absolute inset-[5px] bg-[var(--acid)] rotate-45"></div>
+      </div>
+      <span class="mono text-[var(--acid)] text-lg font-bold tracking-widest glitch" data-text="NETAUDIT">NETAUDIT</span>
+      <span class="text-[var(--muted)] text-xs mono">v1.0.0</span>
+    </div>
+
+    <!-- Nav -->
+    <nav class="flex items-center gap-6 text-sm font-semibold tracking-wide uppercase">
+      <span class="nav-item active px-1 py-3" data-page="dashboard" onclick="showPage('dashboard')">Dashboard</span>
+      <span class="nav-item px-1 py-3" data-page="scan" onclick="showPage('scan')">Scan</span>
+      <span class="nav-item px-1 py-3" data-page="hosts" onclick="showPage('hosts')">Hôtes</span>
+      <span class="nav-item px-1 py-3" data-page="vulns" onclick="showPage('vulns')">Vulnérabilités</span>
+      <span class="nav-item px-1 py-3" data-page="mitre" onclick="showPage('mitre')">MITRE</span>
+      <span class="nav-item px-1 py-3" data-page="auth" onclick="showPage('auth')">Auth Tests</span>
+      <span class="nav-item px-1 py-3" data-page="reports" onclick="showPage('reports')">Rapports</span>
+    </nav>
+
+    <!-- Status -->
+    <div class="flex items-center gap-2 mono text-xs">
+      <span class="w-2 h-2 rounded-full bg-[var(--acid)] pulse-dot"></span>
+      <span class="text-[var(--acid)]">API CONNECTED</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════ MAIN ═══════════════════════ -->
+<main class="max-w-screen-2xl mx-auto px-6 py-8">
+
+  <!-- ── DASHBOARD ── -->
+  <div id="page-dashboard" class="page active fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">TABLEAU DE BORD</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Vue d'ensemble des campagnes d'audit</p>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="stat-card rounded-lg p-5">
+        <div class="text-[var(--muted)] text-xs mono uppercase tracking-widest mb-1">Campagnes</div>
+        <div class="text-4xl font-bold text-white mono" id="stat-campaigns">—</div>
+        <div class="text-[var(--acid)] text-xs mt-2 mono">TOTAL</div>
+      </div>
+      <div class="stat-card rounded-lg p-5">
+        <div class="text-[var(--muted)] text-xs mono uppercase tracking-widest mb-1">Hôtes</div>
+        <div class="text-4xl font-bold text-white mono" id="stat-hosts">—</div>
+        <div class="text-[var(--acid)] text-xs mt-2 mono">DÉCOUVERTS</div>
+      </div>
+      <div class="stat-card rounded-lg p-5">
+        <div class="text-[var(--muted)] text-xs mono uppercase tracking-widest mb-1">Vulnérabilités</div>
+        <div class="text-4xl font-bold text-[var(--red)] mono" id="stat-vulns">—</div>
+        <div class="text-[var(--red)] text-xs mt-2 mono">IDENTIFIÉES</div>
+      </div>
+      <div class="stat-card rounded-lg p-5">
+        <div class="text-[var(--muted)] text-xs mono uppercase tracking-widest mb-1">CVE</div>
+        <div class="text-4xl font-bold text-[var(--orange)] mono" id="stat-cves">—</div>
+        <div class="text-[var(--orange)] text-xs mt-2 mono">ASSOCIÉES</div>
+      </div>
+    </div>
+
+    <!-- Severity breakdown + recent campaigns -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+
+      <!-- Severity chart -->
+      <div class="stat-card rounded-lg p-6">
+        <h2 class="text-sm font-bold tracking-widest uppercase mono text-[var(--muted)] mb-4">Répartition Criticité</h2>
+        <div class="space-y-3" id="severity-bars">
+          <div class="flex items-center gap-3">
+            <span class="text-[var(--red)] mono text-xs w-16">CRITICAL</span>
+            <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
+              <div class="h-full bg-[var(--red)] bar-fill rounded-full" style="width:0%" data-target="30"></div>
+            </div>
+            <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-critical">0</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-[var(--orange)] mono text-xs w-16">HIGH</span>
+            <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
+              <div class="h-full bg-[var(--orange)] bar-fill rounded-full" style="width:0%" data-target="55"></div>
+            </div>
+            <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-high">0</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-[var(--yellow)] mono text-xs w-16">MEDIUM</span>
+            <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
+              <div class="h-full bg-[var(--yellow)] bar-fill rounded-full" style="width:0%" data-target="70"></div>
+            </div>
+            <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-medium">0</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-[var(--acid)] mono text-xs w-16">LOW</span>
+            <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
+              <div class="h-full bg-[var(--acid)] bar-fill rounded-full" style="width:0%" data-target="85"></div>
+            </div>
+            <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-low">0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent campaigns -->
+      <div class="stat-card rounded-lg p-6 lg:col-span-2">
+        <h2 class="text-sm font-bold tracking-widest uppercase mono text-[var(--muted)] mb-4">Campagnes Récentes</h2>
+        <div id="recent-campaigns" class="space-y-2">
+          <div class="text-[var(--muted)] mono text-sm">Chargement...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity log -->
+    <div class="stat-card rounded-lg p-6">
+      <h2 class="text-sm font-bold tracking-widest uppercase mono text-[var(--muted)] mb-4">// Journal d'activité</h2>
+      <div id="activity-log" class="space-y-2 max-h-48 overflow-y-auto font-mono text-xs">
+        <div class="log-entry success"><span class="text-[var(--muted)]">00:00:00</span> <span class="text-[var(--acid)]">Plateforme initialisée</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SCAN ── -->
+  <div id="page-scan" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">NOUVELLE CAMPAGNE</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Découverte réseau et scan de ports</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- Form -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-6">Configuration de la cible</h2>
+        <div class="space-y-5">
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Nom de la campagne</label>
+            <input id="scan-name" type="text" placeholder="Audit-LAN-2025" class="input-field w-full rounded px-4 py-3 text-sm" />
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Réseau cible (CIDR)</label>
+            <input id="scan-network" type="text" placeholder="192.168.1.0/24" class="input-field w-full rounded px-4 py-3 text-sm" />
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Plage de ports</label>
+            <input id="scan-ports" type="text" value="1-1024" class="input-field w-full rounded px-4 py-3 text-sm" />
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="scan-udp" type="checkbox" class="w-4 h-4 accent-[#00ff9d]" />
+            <label for="scan-udp" class="mono text-xs text-[var(--muted)] uppercase tracking-widest">Inclure scan UDP</label>
+          </div>
+          <button onclick="startScan()" class="btn-primary w-full rounded py-3 text-sm tracking-widest uppercase">
+            ▶ LANCER LE SCAN
+          </button>
+        </div>
+      </div>
+
+      <!-- Live output -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Sortie en direct</h2>
+        <div id="scan-output" class="bg-[#050810] rounded p-4 h-64 overflow-y-auto mono text-xs text-[var(--text)] space-y-1">
+          <span class="text-[var(--muted)]">En attente du lancement...</span>
+        </div>
+        <div class="mt-4 flex items-center gap-4">
+          <div class="flex-1 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+            <div id="scan-progress" class="h-full bg-[var(--acid)] bar-fill rounded-full" style="width:0%"></div>
+          </div>
+          <span id="scan-status-text" class="mono text-xs text-[var(--muted)]">IDLE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Existing scans -->
+    <div class="stat-card rounded-lg p-6 mt-8">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-bold tracking-widest uppercase mono text-[var(--muted)]">Campagnes existantes</h2>
+        <button onclick="loadCampaigns()" class="btn-ghost rounded px-3 py-1.5 text-xs mono uppercase tracking-wide">↻ RAFRAÎCHIR</button>
+      </div>
+      <div id="campaigns-table" class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-[var(--muted)] mono text-xs uppercase tracking-widest">
+              <th class="text-left py-2 pr-4">ID</th>
+              <th class="text-left py-2 pr-4">Nom</th>
+              <th class="text-left py-2 pr-4">Cible</th>
+              <th class="text-left py-2 pr-4">Statut</th>
+              <th class="text-left py-2 pr-4">Date</th>
+              <th class="text-left py-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="campaigns-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HOSTS ── -->
+  <div id="page-hosts" class="page fade-up">
+    <div class="mb-8 flex items-end justify-between">
+      <div>
+        <h1 class="text-4xl font-bold tracking-tight">INVENTAIRE HÔTES</h1>
+        <p class="text-[var(--muted)] mono text-sm mt-1">// Équipements découverts sur le réseau</p>
+      </div>
+      <div class="flex gap-3">
+        <input id="hosts-scan-filter" type="text" placeholder="Scan ID..." class="input-field rounded px-3 py-2 text-xs w-48" />
+        <button onclick="loadHosts()" class="btn-primary rounded px-4 py-2 text-xs tracking-wide uppercase">CHARGER</button>
+      </div>
+    </div>
+
+    <div id="hosts-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div class="text-[var(--muted)] mono text-sm">Entrez un Scan ID pour afficher les hôtes.</div>
+    </div>
+  </div>
+
+  <!-- ── VULNS ── -->
+  <div id="page-vulns" class="page fade-up">
+    <div class="mb-8 flex items-end justify-between">
+      <div>
+        <h1 class="text-4xl font-bold tracking-tight">VULNÉRABILITÉS</h1>
+        <p class="text-[var(--muted)] mono text-sm mt-1">// CVE identifiées et évaluation du risque</p>
+      </div>
+      <div class="flex gap-3">
+        <input id="vulns-scan-filter" type="text" placeholder="Scan ID..." class="input-field rounded px-3 py-2 text-xs w-48" />
+        <select id="vulns-sev-filter" class="input-field rounded px-3 py-2 text-xs">
+          <option value="">Toutes sévérités</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button onclick="loadVulns()" class="btn-primary rounded px-4 py-2 text-xs tracking-wide uppercase">ANALYSER</button>
+      </div>
+    </div>
+
+    <div class="stat-card rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-[#0d1117]">
+          <tr class="text-[var(--muted)] mono text-xs uppercase tracking-widest">
+            <th class="text-left px-4 py-3">Hôte</th>
+            <th class="text-left px-4 py-3">Port / Service</th>
+            <th class="text-left px-4 py-3">CVE ID</th>
+            <th class="text-left px-4 py-3">CVSS</th>
+            <th class="text-left px-4 py-3">Sévérité</th>
+            <th class="text-left px-4 py-3">Description</th>
+          </tr>
+        </thead>
+        <tbody id="vulns-tbody">
+          <tr><td colspan="6" class="px-4 py-6 text-[var(--muted)] mono text-xs">Entrez un Scan ID pour charger les vulnérabilités.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── MITRE ── -->
+  <div id="page-mitre" class="page fade-up">
+    <div class="mb-8 flex items-end justify-between">
+      <div>
+        <h1 class="text-4xl font-bold tracking-tight">MITRE ATT&CK</h1>
+        <p class="text-[var(--muted)] mono text-sm mt-1">// Mapping des techniques et tactiques</p>
+      </div>
+      <div class="flex gap-3">
+        <input id="mitre-scan-filter" type="text" placeholder="Scan ID..." class="input-field rounded px-3 py-2 text-xs w-48" />
+        <button onclick="loadMitre()" class="btn-primary rounded px-4 py-2 text-xs tracking-wide uppercase">CHARGER</button>
+      </div>
+    </div>
+    <div id="mitre-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div class="text-[var(--muted)] mono text-sm">Entrez un Scan ID pour afficher le mapping MITRE.</div>
+    </div>
+  </div>
+
+  <!-- ── AUTH TEST ── -->
+  <div id="page-auth" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">TESTS D'AUTHENTIFICATION</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Validation des accès sur services exposés — audit autorisé uniquement</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <!-- Config form -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-6">Configuration</h2>
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">IP Hôte</label>
+              <input id="auth-ip" type="text" placeholder="192.168.1.1" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Port</label>
+              <input id="auth-port" type="number" placeholder="22" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Service</label>
+            <select id="auth-service" class="input-field w-full rounded px-3 py-2.5 text-sm">
+              <option value="ssh">SSH</option>
+              <option value="ftp">FTP</option>
+              <option value="smb">SMB</option>
+              <option value="rdp">RDP</option>
+              <option value="telnet">Telnet</option>
+            </select>
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Scan ID</label>
+            <input id="auth-scan-id" type="text" placeholder="scan_id..." class="input-field w-full rounded px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Credentials (user:pass par ligne)</label>
+            <textarea id="auth-creds" rows="5" placeholder="admin:admin&#10;root:toor&#10;admin:password" class="input-field w-full rounded px-3 py-2.5 text-sm resize-none"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Max tentatives</label>
+              <input id="auth-max" type="number" value="5" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+            </div>
+            <div>
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Délai (sec)</label>
+              <input id="auth-delay" type="number" value="1" step="0.5" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+            </div>
+          </div>
+          <div class="border border-[var(--orange)] rounded p-3 bg-[#ff7b0011]">
+            <p class="mono text-xs text-[var(--orange)]">⚠ Tests autorisés uniquement sur systèmes dont vous avez l'autorisation explicite d'audit.</p>
+          </div>
+          <button onclick="runAuthTest()" class="btn-primary w-full rounded py-3 text-sm tracking-widest uppercase">
+            ▶ LANCER LES TESTS
+          </button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Résultats</h2>
+        <div id="auth-results" class="space-y-2 max-h-96 overflow-y-auto">
+          <div class="text-[var(--muted)] mono text-xs">En attente des tests...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── REPORTS ── -->
+  <div id="page-reports" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">RAPPORTS</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Génération et export des résultats d'audit</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- Generator -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-6">Générer un rapport</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Scan ID</label>
+            <input id="report-scan-id" type="text" placeholder="scan_id..." class="input-field w-full rounded px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Format</label>
+            <div class="grid grid-cols-3 gap-3">
+              <label class="flex items-center gap-2 border border-[var(--border)] rounded p-3 cursor-pointer hover:border-[var(--acid)] transition-colors">
+                <input type="radio" name="report-format" value="json" checked class="accent-[#00ff9d]" />
+                <span class="mono text-xs">JSON</span>
+              </label>
+              <label class="flex items-center gap-2 border border-[var(--border)] rounded p-3 cursor-pointer hover:border-[var(--acid)] transition-colors">
+                <input type="radio" name="report-format" value="csv" class="accent-[#00ff9d]" />
+                <span class="mono text-xs">CSV</span>
+              </label>
+              <label class="flex items-center gap-2 border border-[var(--border)] rounded p-3 cursor-pointer hover:border-[var(--acid)] transition-colors">
+                <input type="radio" name="report-format" value="pdf" class="accent-[#00ff9d]" />
+                <span class="mono text-xs">PDF</span>
+              </label>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 mono text-xs text-[var(--muted)]">
+              <input type="checkbox" id="report-vulns" checked class="accent-[#00ff9d]" /> Inclure vulnérabilités
+            </label>
+            <label class="flex items-center gap-2 mono text-xs text-[var(--muted)]">
+              <input type="checkbox" id="report-auth" checked class="accent-[#00ff9d]" /> Inclure tests d'auth
+            </label>
+            <label class="flex items-center gap-2 mono text-xs text-[var(--muted)]">
+              <input type="checkbox" id="report-mitre" checked class="accent-[#00ff9d]" /> Inclure MITRE
+            </label>
+          </div>
+          <button onclick="generateReport()" class="btn-primary w-full rounded py-3 text-sm tracking-widest uppercase">
+            ↓ GÉNÉRER ET EXPORTER
+          </button>
+        </div>
+      </div>
+
+      <!-- Report preview -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Aperçu du rapport</h2>
+        <div id="report-preview" class="bg-[#050810] rounded p-4 h-80 overflow-y-auto mono text-xs text-[var(--text)]">
+          <span class="text-[var(--muted)]">Générez un rapport pour voir l'aperçu ici...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══════════════════════ JS ═══════════════════════ -->
+<script>
+  const API = 'http://localhost:8000/api';
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    document.querySelector(`[data-page="${name}"]`).classList.add('active');
+  }
+
+  // ── Log helper ──────────────────────────────────────────────────────────────
+  function addLog(msg, type = '') {
+    const log = document.getElementById('activity-log');
+    const now = new Date().toTimeString().slice(0,8);
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    const colorMap = { success: 'var(--acid)', error: 'var(--red)', warn: 'var(--orange)', '': 'var(--text)' };
+    div.innerHTML = `<span class="text-[var(--muted)]">${now}</span> <span style="color:${colorMap[type]}">${msg}</span>`;
+    log.prepend(div);
+  }
+
+  // ── Severity badge ──────────────────────────────────────────────────────────
+  function sevBadge(sev) {
+    return `<span class="badge-${sev || 'info'} mono text-xs px-2 py-0.5 rounded uppercase">${sev || 'info'}</span>`;
+  }
+
+  // ── Status badge ────────────────────────────────────────────────────────────
+  function statusBadge(status) {
+    const map = {
+      done: ['var(--acid)', '●'],
+      running: ['var(--yellow)', '◌'],
+      pending: ['var(--muted)', '○'],
+      failed: ['var(--red)', '✕'],
+    };
+    const [color, icon] = map[status] || ['var(--muted)', '?'];
+    return `<span class="mono text-xs" style="color:${color}">${icon} ${status.toUpperCase()}</span>`;
+  }
+
+  // ── Dashboard ────────────────────────────────────────────────────────────────
+  async function loadDashboard() {
+    try {
+      const camps = await fetchJSON('/scan/');
+      document.getElementById('stat-campaigns').textContent = camps.length;
+      document.getElementById('stat-hosts').textContent = '—';
+      document.getElementById('stat-vulns').textContent = '—';
+      document.getElementById('stat-cves').textContent = '—';
+
+      const recent = document.getElementById('recent-campaigns');
+      recent.innerHTML = camps.slice(0, 5).map(c => `
+        <div class="trow flex items-center justify-between py-2 px-2 rounded">
+          <span class="mono text-xs text-[var(--muted)] w-32 truncate">${c.id?.slice(0,8) || '—'}...</span>
+          <span class="text-sm font-semibold">${c.name || 'Sans nom'}</span>
+          <span class="mono text-xs">${c.target?.network || ''}</span>
+          ${statusBadge(c.status)}
+        </div>
+      `).join('') || '<div class="text-[var(--muted)] mono text-sm">Aucune campagne.</div>';
+
+      animateBars();
+      addLog(`${camps.length} campagne(s) chargées`, 'success');
+    } catch(e) {
+      addLog('Erreur connexion API: ' + e.message, 'error');
+    }
+  }
+
+  function animateBars() {
+    setTimeout(() => {
+      document.querySelectorAll('.bar-fill[data-target]').forEach(bar => {
+        bar.style.width = bar.dataset.target + '%';
+      });
+    }, 200);
+  }
+
+  // ── Campaigns ────────────────────────────────────────────────────────────────
+  async function loadCampaigns() {
+    try {
+      const camps = await fetchJSON('/scan/');
+      const tbody = document.getElementById('campaigns-tbody');
+      tbody.innerHTML = camps.map(c => `
+        <tr class="trow text-sm">
+          <td class="py-3 pr-4 mono text-xs text-[var(--muted)]">${c.id?.slice(0,8) || '—'}...</td>
+          <td class="py-3 pr-4 font-semibold">${c.name || 'Sans nom'}</td>
+          <td class="py-3 pr-4 mono text-xs">${c.target?.network || ''}</td>
+          <td class="py-3 pr-4">${statusBadge(c.status)}</td>
+          <td class="py-3 pr-4 mono text-xs text-[var(--muted)]">${new Date(c.created_at).toLocaleDateString('fr-FR')}</td>
+          <td class="py-3">
+            <button onclick="useScanId('${c.id}')" class="btn-ghost rounded px-2 py-1 text-xs mono">UTILISER</button>
+          </td>
+        </tr>
+      `).join('') || '<tr><td colspan="6" class="py-4 px-4 text-[var(--muted)] mono text-xs">Aucune campagne.</td></tr>';
+    } catch(e) {
+      addLog('Erreur chargement campagnes: ' + e.message, 'error');
+    }
+  }
+
+  function useScanId(id) {
+    ['hosts-scan-filter', 'vulns-scan-filter', 'mitre-scan-filter', 'auth-scan-id', 'report-scan-id'].forEach(elId => {
+      const el = document.getElementById(elId);
+      if (el) el.value = id;
+    });
+    addLog(`Scan ID ${id.slice(0,8)}... sélectionné`, 'success');
+  }
+
+  // ── Scan ─────────────────────────────────────────────────────────────────────
+  async function startScan() {
+    const name = document.getElementById('scan-name').value || 'Scan-' + Date.now();
+    const network = document.getElementById('scan-network').value;
+    const ports = document.getElementById('scan-ports').value || '1-1024';
+    const udp = document.getElementById('scan-udp').checked;
+
+    if (!network) { addLog('Réseau cible requis', 'error'); return; }
+
+    const output = document.getElementById('scan-output');
+    const progress = document.getElementById('scan-progress');
+    const statusText = document.getElementById('scan-status-text');
+
+    output.innerHTML = '';
+    appendOutput(`[INIT] Campagne: ${name}`, 'var(--acid)');
+    appendOutput(`[TARGET] ${network} | Ports: ${ports}`, 'var(--text)');
+    statusText.textContent = 'RUNNING';
+    progress.style.width = '10%';
+
+    try {
+      const data = await postJSON('/scan/start', {
+        name, status: 'pending',
+        target: { network, ports, include_udp: udp }
+      });
+      appendOutput(`[OK] Scan lancé — ID: ${data.scan_id}`, 'var(--acid)');
+      progress.style.width = '30%';
+      useScanId(data.scan_id);
+      addLog(`Scan lancé: ${data.scan_id.slice(0,8)}...`, 'success');
+      pollScan(data.scan_id, progress, statusText);
+    } catch(e) {
+      appendOutput('[ERR] ' + e.message, 'var(--red)');
+      statusText.textContent = 'FAILED';
+      addLog('Échec lancement scan: ' + e.message, 'error');
+    }
+  }
+
+  async function pollScan(id, progress, statusText) {
+    let pct = 30;
+    const interval = setInterval(async () => {
+      try {
+        const data = await fetchJSON(`/scan/${id}`);
+        appendOutput(`[STATUS] ${data.status.toUpperCase()}`, 'var(--muted)');
+        if (data.status === 'done') {
+          clearInterval(interval);
+          progress.style.width = '100%';
+          statusText.textContent = 'DONE';
+          appendOutput('[DONE] Scan terminé avec succès', 'var(--acid)');
+          addLog(`Scan ${id.slice(0,8)}... terminé`, 'success');
+          loadCampaigns();
+        } else if (data.status === 'failed') {
+          clearInterval(interval);
+          statusText.textContent = 'FAILED';
+          appendOutput('[FAIL] Le scan a échoué', 'var(--red)');
+        } else {
+          pct = Math.min(pct + 10, 90);
+          progress.style.width = pct + '%';
+        }
+      } catch(e) { clearInterval(interval); }
+    }, 3000);
+  }
+
+  function appendOutput(msg, color = 'var(--text)') {
+    const output = document.getElementById('scan-output');
+    const ts = new Date().toTimeString().slice(0,8);
+    const line = document.createElement('div');
+    line.innerHTML = `<span class="text-[var(--muted)]">[${ts}]</span> <span style="color:${color}">${msg}</span>`;
+    output.appendChild(line);
+    output.scrollTop = output.scrollHeight;
+  }
+
+  // ── Hosts ─────────────────────────────────────────────────────────────────────
+  async function loadHosts() {
+    const scanId = document.getElementById('hosts-scan-filter').value.trim();
+    if (!scanId) return;
+    const grid = document.getElementById('hosts-grid');
+    grid.innerHTML = '<div class="mono text-xs text-[var(--muted)]">Chargement...</div>';
+    try {
+      const hosts = await fetchJSON(`/scan/${scanId}/hosts`);
+      grid.innerHTML = hosts.map(h => `
+        <div class="stat-card rounded-lg p-5 fade-up">
+          <div class="flex items-center justify-between mb-3">
+            <span class="mono text-[var(--acid)] font-bold text-lg">${h.ip}</span>
+            <span class="mono text-xs text-[var(--muted)]">${h.os || 'OS inconnu'}</span>
+          </div>
+          ${h.hostname ? `<div class="mono text-xs text-[var(--muted)] mb-3">${h.hostname}</div>` : ''}
+          <div class="space-y-1.5">
+            ${(h.ports || []).slice(0, 8).map(p => `
+              <div class="flex items-center gap-2 text-xs">
+                <span class="bg-[var(--acid-dim)] text-[var(--acid)] mono px-2 py-0.5 rounded">${p.port}/${p.protocol || 'tcp'}</span>
+                <span class="text-[var(--text)]">${p.service || '?'}</span>
+                ${p.version ? `<span class="text-[var(--muted)]">${p.version}</span>` : ''}
+              </div>
+            `).join('')}
+            ${h.ports?.length > 8 ? `<div class="mono text-xs text-[var(--muted)]">+${h.ports.length - 8} ports supplémentaires</div>` : ''}
+          </div>
+          ${h.ports?.length ? `<div class="mt-3 pt-3 border-t border-[var(--border)] mono text-xs text-[var(--muted)]">${h.ports.length} port(s) ouvert(s)</div>` : ''}
+        </div>
+      `).join('') || '<div class="mono text-xs text-[var(--muted)]">Aucun hôte trouvé.</div>';
+      addLog(`${hosts.length} hôte(s) chargés pour scan ${scanId.slice(0,8)}...`, 'success');
+    } catch(e) {
+      grid.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
+    }
+  }
+
+  // ── Vulns ─────────────────────────────────────────────────────────────────────
+  async function loadVulns() {
+    const scanId = document.getElementById('vulns-scan-filter').value.trim();
+    const sev = document.getElementById('vulns-sev-filter').value;
+    if (!scanId) return;
+    const tbody = document.getElementById('vulns-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 mono text-xs text-[var(--muted)]">Analyse en cours...</td></tr>';
+    try {
+      let url = `/vulns/${scanId}`;
+      if (sev) url += `?severity=${sev}`;
+      const vulns = await fetchJSON(url);
+      const rows = [];
+      vulns.forEach(v => {
+        if (!v.cves?.length) {
+          rows.push(`<tr class="trow"><td class="px-4 py-3 mono text-xs">${v.host_ip}</td><td class="px-4 py-3 mono text-xs">${v.port || ''}/${v.service || '?'}</td><td colspan="4" class="px-4 py-3 text-[var(--muted)] mono text-xs">Aucune CVE</td></tr>`);
+        } else {
+          v.cves.forEach(cve => {
+            rows.push(`
+              <tr class="trow">
+                <td class="px-4 py-3 mono text-xs text-[var(--acid)]">${v.host_ip}</td>
+                <td class="px-4 py-3 mono text-xs">${v.port || ''}${v.service ? '/' + v.service : ''}</td>
+                <td class="px-4 py-3 mono text-xs font-bold">${cve.cve_id}</td>
+                <td class="px-4 py-3 mono text-xs">${cve.cvss_score ?? '—'}</td>
+                <td class="px-4 py-3">${sevBadge(cve.severity)}</td>
+                <td class="px-4 py-3 text-xs text-[var(--muted)] max-w-xs truncate">${cve.description?.slice(0,80) || '—'}...</td>
+              </tr>
+            `);
+          });
+        }
+      });
+      tbody.innerHTML = rows.join('') || '<tr><td colspan="6" class="px-4 py-4 mono text-xs text-[var(--muted)]">Aucune vulnérabilité.</td></tr>';
+      addLog(`${vulns.length} vulnérabilité(s) chargées`, 'success');
+    } catch(e) {
+      tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-4 mono text-xs text-[var(--red)]">Erreur: ${e.message}</td></tr>`;
+    }
+  }
+
+  // ── MITRE ─────────────────────────────────────────────────────────────────────
+  async function loadMitre() {
+    const scanId = document.getElementById('mitre-scan-filter').value.trim();
+    if (!scanId) return;
+    const grid = document.getElementById('mitre-grid');
+    grid.innerHTML = '<div class="mono text-xs text-[var(--muted)]">Chargement...</div>';
+    try {
+      const techniques = await fetchJSON(`/vulns/${scanId}/mitre`);
+      const tacticColors = {
+        'Initial Access': 'var(--red)',
+        'Credential Access': 'var(--orange)',
+        'Lateral Movement': 'var(--yellow)',
+        'Execution': 'var(--acid)',
+        'Persistence': '#a78bfa',
+        'Discovery': '#38bdf8',
+      };
+      grid.innerHTML = techniques.map(t => {
+        const color = tacticColors[t.tactic] || 'var(--acid)';
+        return `
+          <div class="stat-card rounded-lg p-5 fade-up">
+            <div class="flex items-start justify-between mb-3">
+              <span class="mono font-bold text-lg" style="color:${color}">${t.technique_id}</span>
+              <span class="mono text-xs px-2 py-0.5 rounded border" style="color:${color};border-color:${color}33;background:${color}11">${t.tactic}</span>
+            </div>
+            <div class="font-semibold text-sm mb-2">${t.technique_name}</div>
+            ${t.url ? `<a href="${t.url}" target="_blank" class="mono text-xs text-[var(--muted)] hover:text-[var(--acid)] transition-colors">↗ MITRE ATT&CK</a>` : ''}
+          </div>
+        `;
+      }).join('') || '<div class="mono text-xs text-[var(--muted)]">Aucune technique MITRE trouvée.</div>';
+      addLog(`${techniques.length} technique(s) MITRE chargées`, 'success');
+    } catch(e) {
+      grid.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
+    }
+  }
+
+  // ── Auth Test ─────────────────────────────────────────────────────────────────
+  async function runAuthTest() {
+    const ip = document.getElementById('auth-ip').value.trim();
+    const port = parseInt(document.getElementById('auth-port').value);
+    const service = document.getElementById('auth-service').value;
+    const scanId = document.getElementById('auth-scan-id').value.trim();
+    const rawCreds = document.getElementById('auth-creds').value.trim();
+    const maxAttempts = parseInt(document.getElementById('auth-max').value);
+    const delay = parseFloat(document.getElementById('auth-delay').value);
+
+    if (!ip || !port || !scanId || !rawCreds) { addLog('Tous les champs auth sont requis', 'warn'); return; }
+
+    const credentials = rawCreds.split('\n').map(line => {
+      const [username, ...rest] = line.split(':');
+      return { username: username.trim(), password: rest.join(':').trim() };
+    }).filter(c => c.username && c.password);
+
+    const resultsEl = document.getElementById('auth-results');
+    resultsEl.innerHTML = '<div class="mono text-xs text-[var(--yellow)]">Tests en cours...</div>';
+
+    try {
+      const data = await postJSON('/auth-test/run', {
+        host_ip: ip, port, service, credentials,
+        max_attempts: maxAttempts, delay_seconds: delay, scan_id: scanId
+      });
+      resultsEl.innerHTML = data.results.map(r => `
+        <div class="log-entry ${r.success ? 'success' : 'error'} py-2">
+          <div class="flex items-center gap-3">
+            <span class="mono text-xs" style="color:${r.success ? 'var(--acid)' : 'var(--red)'}">
+              ${r.success ? '✓ SUCCÈS' : '✗ ÉCHEC'}
+            </span>
+            <span class="mono text-xs text-[var(--text)]">${r.username}:${r.password}</span>
+            <span class="mono text-xs text-[var(--muted)]">${r.service}:${r.port}</span>
+          </div>
+        </div>
+      `).join('') || '<div class="mono text-xs text-[var(--muted)]">Aucun résultat.</div>';
+      addLog(`Auth test terminé: ${data.tested} tentative(s)`, data.results.some(r=>r.success) ? 'warn' : 'success');
+    } catch(e) {
+      resultsEl.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
+    }
+  }
+
+  // ── Reports ───────────────────────────────────────────────────────────────────
+  async function generateReport() {
+    const scanId = document.getElementById('report-scan-id').value.trim();
+    const format = document.querySelector('[name="report-format"]:checked')?.value || 'json';
+    const includeVulns = document.getElementById('report-vulns').checked;
+    const includeAuth = document.getElementById('report-auth').checked;
+    const includeMitre = document.getElementById('report-mitre').checked;
+
+    if (!scanId) { addLog('Scan ID requis pour le rapport', 'warn'); return; }
+
+    const preview = document.getElementById('report-preview');
+    preview.innerHTML = '<span class="text-[var(--muted)]">Génération en cours...</span>';
+
+    try {
+      const response = await fetch(`${API}/reports/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan_id: scanId, format, include_vulns: includeVulns, include_auth: includeAuth, include_mitre: includeMitre })
+      });
+
+      if (format === 'csv') {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `report_${scanId}.csv`; a.click();
+        preview.innerHTML = '<span class="text-[var(--acid)]">CSV exporté avec succès.</span>';
+      } else {
+        const data = await response.json();
+        preview.innerHTML = JSON.stringify(data, null, 2)
+          .replace(/(".*?")/g, '<span style="color:var(--acid)">$1</span>')
+          .replace(/\b(\d+\.?\d*)\b/g, '<span style="color:var(--orange)">$1</span>');
+      }
+      addLog(`Rapport ${format.toUpperCase()} généré pour ${scanId.slice(0,8)}...`, 'success');
+    } catch(e) {
+      preview.innerHTML = `<span class="text-[var(--red)]">Erreur: ${e.message}</span>`;
+      addLog('Erreur génération rapport: ' + e.message, 'error');
+    }
+  }
+
+  // ── Fetch helpers ─────────────────────────────────────────────────────────────
+  async function fetchJSON(path) {
+    const r = await fetch(API + path);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function postJSON(path, body) {
+    const r = await fetch(API + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    loadDashboard();
+    loadCampaigns();
+    animateBars();
+  });
+</script>
+</body>
+</html>

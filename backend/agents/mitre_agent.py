@@ -1,0 +1,2 @@
+class MitreAgent:
+    pass

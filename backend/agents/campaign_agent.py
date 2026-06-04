@@ -1,0 +1,2 @@
+class CampaignAgent:
+    pass
