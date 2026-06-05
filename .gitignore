@@ -5,3 +5,5 @@ bun.lock
 .gitignorebin/
 bin/
 bin/
+__pycache__/
+.venv/
