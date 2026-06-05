@@ -101,6 +101,34 @@ class AuthTestResult(BaseModel):
 
 # ── Report ─────────────────────────────────────────────────────────────────────
 
+# ── SQL Injection ──────────────────────────────────────────────────────────────
+
+class SQLiConfig(BaseModel):
+    url: str
+    data: Optional[str] = None
+    cookie: Optional[str] = None
+    level: int = Field(default=1, ge=1, le=5)
+    risk: int = Field(default=1, ge=1, le=3)
+    scan_id: str
+
+class SQLiTechnique(str, Enum):
+    B = "B"
+    E = "E"
+    U = "U"
+    S = "S"
+    T = "T"
+    Q = "Q"
+
+class SQLiFinding(BaseModel):
+    url: str
+    technique: SQLiTechnique
+    payload: Optional[str] = None
+    parameter: Optional[str] = None
+    dbms: Optional[str] = None
+    title: Optional[str] = None
+    scan_id: str
+    found_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class ReportRequest(BaseModel):
     scan_id: str
     format: str = "json"       # json | csv | pdf

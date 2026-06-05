@@ -19,8 +19,9 @@ WORKDIR /app
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Runtime deps only (curl for healthcheck)
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+# Runtime deps (curl for healthcheck, sqlmap for SQLi scanning)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl sqlmap && \
     rm -rf /var/lib/apt/lists/*
 
 # Non-root user

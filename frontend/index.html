@@ -170,6 +170,7 @@
       <span class="nav-item px-1 py-3" data-page="hosts" onclick="showPage('hosts')">Hôtes</span>
       <span class="nav-item px-1 py-3" data-page="vulns" onclick="showPage('vulns')">Vulnérabilités</span>
       <span class="nav-item px-1 py-3" data-page="mitre" onclick="showPage('mitre')">MITRE</span>
+      <span class="nav-item px-1 py-3" data-page="sqli" onclick="showPage('sqli')">SQLi</span>
       <span class="nav-item px-1 py-3" data-page="auth" onclick="showPage('auth')">Auth Tests</span>
       <span class="nav-item px-1 py-3" data-page="reports" onclick="showPage('reports')">Rapports</span>
       <span class="nav-item px-1 py-3" data-page="integration" onclick="showPage('integration')">Intégration</span>
@@ -420,6 +421,72 @@
     </div>
   </div>
 
+  <!-- ── SQLi ── -->
+  <div id="page-sqli" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">INJECTION SQL</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Tests d'injection SQL avec sqlmap — audit autorisé uniquement</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <!-- Config form -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-6">Configuration de la cible</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">URL cible</label>
+            <input id="sqli-url" type="text" placeholder="http://192.168.1.1/page.php?id=1" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Données POST (optionnel)</label>
+            <input id="sqli-data" type="text" placeholder="user=admin&pass=test" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Cookie (optionnel)</label>
+            <input id="sqli-cookie" type="text" placeholder="PHPSESSID=abc123" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Niveau (1-5)</label>
+              <select id="sqli-level" class="input-field w-full rounded px-3 py-2.5 text-sm">
+                <option value="1">1 — Léger</option>
+                <option value="2">2 — Modéré</option>
+                <option value="3" selected>3 — Standard</option>
+                <option value="4">4 — Approfondi</option>
+                <option value="5">5 — Aggressif</option>
+              </select>
+            </div>
+            <div>
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Risque (1-3)</label>
+              <select id="sqli-risk" class="input-field w-full rounded px-3 py-2.5 text-sm">
+                <option value="1" selected>1 — Faible</option>
+                <option value="2">2 — Moyen</option>
+                <option value="3">3 — Élevé</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Scan ID associé</label>
+            <input id="sqli-scan-id" type="text" placeholder="scan_id..." class="input-field w-full rounded px-3 py-2.5 text-sm" />
+          </div>
+          <div class="border border-[var(--orange)] rounded p-3 bg-[#ff7b0011]">
+            <p class="mono text-xs text-[var(--orange)]">⚠ Tests autorisés uniquement sur systèmes dont vous avez l'autorisation explicite d'audit.</p>
+          </div>
+          <button onclick="runSQLi()" class="btn-primary w-full rounded py-3 text-sm tracking-widest uppercase">
+            ▶ LANCER SQLMAP
+          </button>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="stat-card rounded-lg p-8">
+        <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Résultats</h2>
+        <div id="sqli-results" class="space-y-2 max-h-96 overflow-y-auto">
+          <div class="text-[var(--muted)] mono text-xs">En attente du scan...</div>
+        </div>
+      </div>
+    </div>
+  </div>
   <!-- ── AUTH TEST ── -->
   <div id="page-auth" class="page fade-up">
     <div class="mb-8">
@@ -631,7 +698,7 @@
 
 <!-- ═══════════════════════ JS ═══════════════════════ -->
 <script>
-  const API = 'http://localhost:8000/api';
+  const API = '/api';
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   function showPage(name) {
@@ -907,6 +974,63 @@
     } catch(e) {
       grid.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
     }
+  }
+
+  // ── SQLi ─────────────────────────────────────────────────────────────────────
+  async function runSQLi() {
+    const url = document.getElementById("sqli-url").value.trim();
+    const data = document.getElementById("sqli-data").value.trim() || null;
+    const cookie = document.getElementById("sqli-cookie").value.trim() || null;
+    const level = parseInt(document.getElementById("sqli-level").value);
+    const risk = parseInt(document.getElementById("sqli-risk").value);
+    const scanId = document.getElementById("sqli-scan-id").value.trim();
+
+    if (!url || !scanId) { addLog("URL et Scan ID requis pour SQLi", "warn"); return; }
+
+    const resultsEl = document.getElementById("sqli-results");
+    resultsEl.innerHTML = "<div class="mono text-xs text-[var(--yellow)]">Scan SQLi en cours...</div>";
+
+    try {
+      const data2 = await postJSON("/sqli/run", {
+        url, data, cookie, level, risk, scan_id: scanId
+      });
+      addLog("SQLi lancé: " + data2.sqli_id.slice(0,8) + "...", "success");
+      pollSQLi(data2.sqli_id, resultsEl);
+    } catch(e) {
+      resultsEl.innerHTML = "<div class="mono text-xs text-[var(--red)]">Erreur: " + e.message + "</div>";
+      addLog("Erreur SQLi: " + e.message, "error");
+    }
+  }
+
+  async function pollSQLi(sqliId, resultsEl) {
+    const interval = setInterval(async () => {
+      try {
+        const status = await fetchJSON("/sqli/" + sqliId);
+        if (status.status === "done") {
+          clearInterval(interval);
+          const findings = await fetchJSON("/sqli/" + sqliId + "/findings");
+          if (findings.length === 0) {
+            resultsEl.innerHTML = "<div class="mono text-xs text-[var(--muted)]">Aucune injection trouvée.</div>";
+          } else {
+            resultsEl.innerHTML = findings.map(function(f) {
+              return "<div class="log-entry success py-3">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="mono text-xs bg-[var(--red)] text-white px-2 py-0.5 rounded">" + f.technique + "</span>
+                  <span class="mono text-xs text-[var(--acid)]">" + (f.parameter || "?") + "</span>
+                </div>
+                <div class="mono text-xs text-[var(--text)] ml-1">" + (f.title || "Injection détectée") + "</div>
+                " + (f.payload ? "<div class="mono text-xs text-[var(--orange)] ml-1 mt-1 break-all">Payload: " + f.payload + "</div>" : "") + "
+                " + (f.dbms ? "<div class="mono text-xs text-[var(--muted)] ml-1 mt-1">DBMS: " + f.dbms + "</div>" : "") + "
+              </div>";
+            }).join("");
+          }
+          addLog(findings.length + " injection(s) trouvée(s)", findings.length > 0 ? "warn" : "success");
+        } else if (status.status === "failed") {
+          clearInterval(interval);
+          resultsEl.innerHTML = "<div class="mono text-xs text-[var(--red)]">Échec du scan: " + (status.error || "erreur inconnue") + "</div>";
+        }
+      } catch(e) { clearInterval(interval); }
+    }, 3000);
   }
 
   // ── Auth Test ─────────────────────────────────────────────────────────────────
