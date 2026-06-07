@@ -91,6 +91,14 @@
     a.cve-link { color: var(--cyan); text-decoration: none; transition: color .2s, text-shadow .2s; }
     a.cve-link:hover { color: #7dcfff; text-shadow: 0 0 12px #7dcfff66; text-decoration: underline; }
 
+    /* Tool cards */
+    .tool-card { transition: border-color .25s, transform .2s, box-shadow .25s; cursor: default; }
+    .tool-card:hover { border-color: var(--acid); transform: translateY(-3px); box-shadow: 0 8px 32px var(--acid-dim); }
+    .tool-link { color: var(--cyan); transition: color .2s; text-decoration: none; }
+    .tool-link:hover { color: var(--acid); text-decoration: underline; }
+    .stat-chip { background: var(--surface); border: 1px solid var(--border); cursor: pointer; transition: border-color .2s, color .2s, background .2s; display: inline-block; }
+    .stat-chip:hover { border-color: var(--acid); color: var(--acid); background: rgba(0,255,157,0.05); }
+
     /* Table rows */
     .trow { border-bottom: 1px solid var(--border); transition: background .15s; }
     .trow:hover { background: rgba(0,255,157,.04); }
@@ -190,6 +198,7 @@
       <span class="nav-item px-1 py-3" data-page="auth" onclick="showPage('auth')">Auth Tests</span>
       <span class="nav-item px-1 py-3" data-page="wifi" onclick="showPage('wifi')">WiFi</span>
       <span class="nav-item px-1 py-3" data-page="reports" onclick="showPage('reports')">Rapports</span>
+      <span class="nav-item px-1 py-3" data-page="tools" onclick="showPage('tools')">Outils</span>
       <span class="nav-item px-1 py-3" data-page="integration" onclick="showPage('integration')">Intégration</span>
     </nav>
 
@@ -767,6 +776,31 @@
       </div>
       <pre id="integration-raw" class="bg-[#050810] rounded p-4 max-h-64 overflow-y-auto mono text-xs text-[var(--text)]"></pre>
     </div>
+  </div>
+
+  <!-- ── OUTILS ── -->
+  <div id="page-tools" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">OUTILS</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Catalogue d'outils de sécurité — références et commandes essentielles</p>
+    </div>
+
+    <!-- Search + Filter bar -->
+    <div class="flex flex-wrap items-center gap-4 mb-8">
+      <div class="flex-1 min-w-[200px]">
+        <input id="tools-search" type="text" placeholder="Rechercher un outil..." oninput="renderTools()" class="input-field w-full rounded px-3 py-2.5 text-sm" />
+      </div>
+      <select id="tools-cat-filter" onchange="renderTools()" class="input-field rounded px-3 py-2.5 text-sm">
+        <option value="">Toutes catégories</option>
+      </select>
+      <span id="tools-count" class="mono text-xs text-[var(--muted)]"></span>
+    </div>
+
+    <!-- Category counters -->
+    <div id="tools-cat-stats" class="flex flex-wrap gap-2 mb-8"></div>
+
+    <!-- Tool cards grid -->
+    <div id="tools-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
   </div>
 
 </main>
@@ -1514,12 +1548,92 @@
     }
   }
 
+  // ── Outils ─────────────────────────────────────────────────────────────────────
+  const TOOLS_DATA = [
+    { id: 'nmap', name: 'Nmap', cat: 'recon', desc: 'Scan de ports, découverte réseau et détection d\'OS. Outil de référence pour la cartographie réseau.', icon: '🔍', link: 'https://nmap.org' },
+    { id: 'wireshark', name: 'Wireshark', cat: 'network', desc: 'Analyseur de paquets réseau en temps réel. Inspection de trames, filtres d\'affichage et décodage de protocoles.', icon: '📡', link: 'https://wireshark.org' },
+    { id: 'burpsuite', name: 'Burp Suite', cat: 'web', desc: 'Proxy d\'interception pour tests d\'intrusion web. Scanner de vulnérabilités, repeater, intruder.', icon: '🕷️', link: 'https://portswigger.net/burp' },
+    { id: 'nikto', name: 'Nikto', cat: 'web', desc: 'Scanner de serveurs web. Détecte les fichiers dangereux, CGI obsolètes et configurations par défaut.', icon: '🌐', link: 'https://cirt.net/Nikto2' },
+    { id: 'gobuster', name: 'Gobuster', cat: 'web', desc: 'Bruteforce de répertoires/fichiers web et de sous-domaines DNS. Rapide et efficace.', icon: '🔎', link: 'https://github.com/OJ/gobuster' },
+    { id: 'dirbuster', name: 'DirBuster', cat: 'web', desc: 'Bruteforce multi-threadé de répertoires et fichiers web. Interface graphique Java.', icon: '📂', link: 'https://www.kali.org/tools/dirbuster/' },
+    { id: 'openvas', name: 'OpenVAS', cat: 'vuln', desc: 'Scanner de vulnérabilités open-source. Base de CVEs exhaustive et rapports détaillés.', icon: '🛡️', link: 'https://www.greenbone.net' },
+    { id: 'nessus', name: 'Nessus', cat: 'vuln', desc: 'Scanner de vulnérabilités professionnel. Détection de failles, conformité et audit de configuration.', icon: '⚠️', link: 'https://www.tenable.com/products/nessus' },
+    { id: 'hydra', name: 'Hydra', cat: 'auth', desc: 'Bruteforceur de mots de passe parallélisé. Supporte SSH, FTP, HTTP, SMB, RDP + 50 protocoles.', icon: '🔐', link: 'https://github.com/vanhauser-thc/thc-hydra' },
+    { id: 'john', name: 'John the Ripper', cat: 'auth', desc: 'Craqueur de mots de passe polyvalent. Supporte hashs Unix, Windows, ZIP, RAR, PDF, etc.', icon: '⚡', link: 'https://www.openwall.com/john/' },
+    { id: 'hashcat', name: 'Hashcat', cat: 'auth', desc: 'Craqueur de hashs accéléré GPU. Modes d\'attaque par dictionnaire, brute-force, règles et masque.', icon: '🔥', link: 'https://hashcat.net/hashcat/' },
+    { id: 'aircrack', name: 'Aircrack-ng', cat: 'wifi', desc: 'Suite de craquage WiFi. Capture de paquets, dé-auth, craquage WEP/WPA, analyse de réseau.', icon: '📶', link: 'https://www.aircrack-ng.org' },
+    { id: 'kismet', name: 'Kismet', cat: 'wifi', desc: 'Détecteur de réseaux sans-fil, sniffer et IDS. Supporte WiFi, Bluetooth, SDR.', icon: '📻', link: 'https://www.kismetwireless.net' },
+    { id: 'zip', name: '7-Zip', cat: 'archives', desc: 'Gestionnaire d\'archives. Extraction et craquage de mots de passe sur fichiers ZIP, RAR, 7z.', icon: '🗜️', link: 'https://www.7-zip.org' },
+  ];
+
+  const CATEGORIES = {
+    recon: { label: 'Reconnaissance & OSINT', icon: '🔍' },
+    network: { label: 'Analyse Réseau', icon: '📡' },
+    web: { label: 'Applications Web', icon: '🌐' },
+    vuln: { label: 'Gestion des Vulnérabilités', icon: '🛡️' },
+    auth: { label: 'Authentifications & Mots de Passe', icon: '🔐' },
+    wifi: { label: 'Sécurité Wi-Fi', icon: '📶' },
+    archives: { label: 'Récupération & Audit de Fichiers', icon: '🗜️' },
+  };
+
+  function renderTools() {
+    const search = document.getElementById('tools-search').value.toLowerCase();
+    const catFilter = document.getElementById('tools-cat-filter').value;
+
+    let filtered = TOOLS_DATA.filter(t => {
+      const matchSearch = !search || t.name.toLowerCase().includes(search) || t.desc.toLowerCase().includes(search) || t.cat.includes(search);
+      const matchCat = !catFilter || t.cat === catFilter;
+      return matchSearch && matchCat;
+    });
+
+    // Counters
+    document.getElementById('tools-count').textContent = `${filtered.length} / ${TOOLS_DATA.length} outils`;
+
+    // Cards
+    const grid = document.getElementById('tools-grid');
+    grid.innerHTML = filtered.map(t => {
+      const cat = CATEGORIES[t.cat] || {};
+      return `<div class="tool-card stat-card rounded-lg p-5 flex flex-col">
+        <div class="flex items-start justify-between mb-3">
+          <span class="text-3xl">${t.icon}</span>
+          <span class="mono text-[10px] text-[var(--muted)] uppercase tracking-widest bg-[var(--border)]/50 rounded px-2 py-0.5">${cat.label || t.cat}</span>
+        </div>
+        <h3 class="text-base font-bold tracking-tight mb-1">${t.name}</h3>
+        <p class="text-xs text-[var(--muted)] leading-relaxed flex-1 mb-4">${t.desc}</p>
+        <a href="${t.link}" target="_blank" class="tool-link self-start text-xs mono uppercase tracking-widest">Site officiel ↗</a>
+      </div>`;
+    }).join('') || '<div class="col-span-full text-center py-12 text-[var(--muted)] mono text-sm">Aucun outil trouvé.</div>';
+  }
+
+  function initTools() {
+    // Populate category filter
+    const sel = document.getElementById('tools-cat-filter');
+    Object.entries(CATEGORIES).forEach(([key, val]) => {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = val.label;
+      sel.appendChild(opt);
+    });
+
+    // Category stats bar
+    const statsEl = document.getElementById('tools-cat-stats');
+    const counts = {};
+    TOOLS_DATA.forEach(t => { counts[t.cat] = (counts[t.cat] || 0) + 1; });
+    statsEl.innerHTML = Object.entries(CATEGORIES).map(([key, val]) => {
+      const cnt = counts[key] || 0;
+      return `<span class="stat-chip rounded px-3 py-1 text-xs mono" data-cat="${key}" onclick="document.getElementById('tools-cat-filter').value='${key}';renderTools()">${val.icon} ${val.label} <span class="text-[var(--muted)]">(${cnt})</span></span>`;
+    }).join('') + `<span class="stat-chip rounded px-3 py-1 text-xs mono" onclick="document.getElementById('tools-cat-filter').value='';renderTools()">✕ Tout</span>`;
+
+    renderTools();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     loadCampaigns();
     animateBars();
     loadIntegration();
+    initTools();
 
     // Ripple effect on all buttons
     document.addEventListener('click', function(e) {
