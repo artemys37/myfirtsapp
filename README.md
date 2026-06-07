@@ -65,9 +65,18 @@ docker compose up -d
 ```
 
 Accès :
-- **Frontend** : http://localhost:80
-- **API** : http://localhost:8000/docs (Swagger UI)
+- **Frontend** : http://localhost:80 → redirige vers https://localhost:443
+- **API** : https://localhost:443/api/ (Swagger : https://localhost:443/docs)
 - **Mongo Express** : http://localhost:8081 (profil `debug`)
+
+### HTTPS (auto-signé)
+
+Un certificat auto-signé est généré lors du premier déploiement.  
+Le serveur écoute sur les ports **80** (redirection → HTTPS) et **443** (HTTPS).
+
+> **Note iOS** : Safari affichera un avertissement "Ce certificat n'est pas valide".  
+> Appuyez sur **"Afficher les détails"** → **"Visiter ce site web"** pour procéder.  
+> Le terminal WebSocket (wss://) fonctionnera après avoir accepté le certificat.
 
 ### Build sans Docker Hub
 
