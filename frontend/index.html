@@ -96,18 +96,21 @@
 
     /* Button */
     .btn-primary {
-      background: var(--acid); color: #080c10; font-family: 'Share Tech Mono', monospace;
+      background: linear-gradient(135deg, var(--acid), #00cc7a); color: var(--bg);
       font-weight: 700; letter-spacing: .05em; border: none; cursor: pointer;
-      transition: box-shadow .2s, transform .1s;
+      transition: box-shadow .2s, transform .15s, filter .15s;
+      position: relative; overflow: hidden;
     }
-    .btn-primary:hover { box-shadow: 0 0 24px var(--acid); transform: translateY(-1px); }
-    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:hover { box-shadow: 0 0 28px var(--acid), 0 0 60px var(--acid-dim); transform: translateY(-2px); }
+    .btn-primary:active { transform: scale(0.97); box-shadow: 0 0 12px var(--acid); }
     .btn-ghost {
       background: transparent; color: var(--text); border: 1px solid var(--border);
-      cursor: pointer; transition: border-color .2s, color .2s;
+      cursor: pointer; transition: border-color .2s, color .2s, transform .15s, background .2s;
       font-family: 'Rajdhani', sans-serif;
+      position: relative; overflow: hidden;
     }
-    .btn-ghost:hover { border-color: var(--acid); color: var(--acid); }
+    .btn-ghost:hover { border-color: var(--acid); color: var(--acid); background: rgba(0,255,157,0.05); }
+    .btn-ghost:active { transform: scale(0.97); }
 
     /* Input */
     .input-field {
@@ -125,6 +128,11 @@
     /* Page sections */
     .page { display: none; }
     .page.active { display: block; }
+
+    /* Ripple animation */
+    @keyframes rippleAnim {
+      to { transform: scale(4); opacity: 0; }
+    }
 
     /* Typewriter */
     @keyframes type { from { width: 0; } to { width: 100%; } }
@@ -331,7 +339,10 @@
     <div class="stat-card rounded-lg p-6 mt-8">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-sm font-bold tracking-widest uppercase mono text-[var(--muted)]">Campagnes existantes</h2>
-        <button onclick="loadCampaigns()" class="btn-ghost rounded px-3 py-1.5 text-xs mono uppercase tracking-wide">↻ RAFRAÎCHIR</button>
+        <div class="flex items-center gap-2">
+          <button onclick="loadCampaigns()" class="btn-ghost rounded px-3 py-1.5 text-xs mono uppercase tracking-wide">↻ RAFRAÎCHIR</button>
+          <button onclick="deleteAllCampaigns()" class="btn-ghost rounded px-3 py-1.5 text-xs mono uppercase tracking-wide text-[var(--red)] hover:bg-[var(--red)]/10">🗑 TOUT SUPPRIMER</button>
+        </div>
       </div>
       <div id="campaigns-table" class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -848,11 +859,12 @@
           <td class="py-3 pr-4 mono text-xs">${c.target?.network || ''}</td>
           <td class="py-3 pr-4">${statusBadge(c.status)}</td>
           <td class="py-3 pr-4 mono text-xs text-[var(--muted)]">${new Date(c.created_at).toLocaleDateString('fr-FR')}</td>
-          <td class="py-3">
+          <td class="py-3 flex items-center gap-1">
             <button onclick="useScanId('${c.id}')" class="btn-ghost rounded px-2 py-1 text-xs mono">UTILISER</button>
+            <button onclick="deleteCampaign('${c.id}')" class="btn-ghost rounded px-2 py-1 text-xs mono text-[var(--red)] hover:bg-[var(--red)]/10" title="Supprimer">✕</button>
           </td>
         </tr>
-      `).join('') || '<tr><td colspan="6" class="py-4 px-4 text-[var(--muted)] mono text-xs">Aucune campagne.</td></tr>';
+      `).join('') || '<tr><td colspan="7" class="py-4 px-4 text-[var(--muted)] mono text-xs">Aucune campagne.</td></tr>';
     } catch(e) {
       addLog('Erreur chargement campagnes: ' + e.message, 'error');
     }
@@ -864,6 +876,31 @@
       if (el) el.value = id;
     });
     addLog(`Scan ID ${id.slice(0,8)}... sélectionné`, 'success');
+  }
+
+  async function deleteCampaign(id) {
+    if (!confirm('Supprimer définitivement cette campagne ?')) return;
+    try {
+      const r = await fetch(API + '/scan/' + id, { method: 'DELETE' });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+      addLog('Campagne ' + id.slice(0,8) + '... supprimée', 'success');
+      loadCampaigns();
+    } catch(e) {
+      addLog('Erreur suppression: ' + e.message, 'error');
+    }
+  }
+
+  async function deleteAllCampaigns() {
+    if (!confirm('Supprimer TOUTES les campagnes et données associées ? Cette action est irréversible.')) return;
+    try {
+      const r = await fetch(API + '/scan/', { method: 'DELETE' });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+      const data = await r.json();
+      addLog(data.deleted + ' document(s) supprimés', 'success');
+      loadCampaigns();
+    } catch(e) {
+      addLog('Erreur suppression totale: ' + e.message, 'error');
+    }
   }
 
   // ── Scan ─────────────────────────────────────────────────────────────────────
@@ -1195,7 +1232,11 @@
   // ── Fetch helpers ─────────────────────────────────────────────────────────────
   async function fetchJSON(path) {
     const r = await fetch(API + path);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const e = await r.json(); if (e.detail) msg = e.detail; } catch {}
+      throw new Error(msg);
+    }
     return r.json();
   }
 
@@ -1205,7 +1246,11 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) {
+      let msg = `HTTP ${r.status}`;
+      try { const e = await r.json(); if (e.detail) msg = e.detail; } catch {}
+      throw new Error(msg);
+    }
     return r.json();
   }
 
@@ -1385,7 +1430,7 @@
       const data = await fetchJSON('/wifi/scan');
       document.getElementById('wifi-stat-networks').textContent = data.count;
       if (data.networks.length === 0) {
-        container.innerHTML = '<div class="text-[var(--muted)] mono text-sm">Aucun réseau WiFi détecté.</div>';
+        container.innerHTML = `<div class="text-[var(--muted)] mono text-sm">${data.note || 'Aucun réseau WiFi détecté.'}</div>`;
       } else {
         container.innerHTML = data.networks.map(n => {
           const sig = n.signal || 0;
@@ -1451,6 +1496,22 @@
     loadCampaigns();
     animateBars();
     loadIntegration();
+
+    // Ripple effect on all buttons
+    document.addEventListener('click', function(e) {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const ripple = document.createElement('span');
+      const size = Math.max(rect.width, rect.height);
+      const x = e.clientX - rect.left - size / 2;
+      const y = e.clientY - rect.top - size / 2;
+      ripple.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${size}px;height:${size}px;border-radius:50%;background:rgba(0,255,157,0.3);transform:scale(0);animation:rippleAnim .5s ease-out;pointer-events:none;`;
+      btn.style.position = 'relative';
+      btn.style.overflow = 'hidden';
+      btn.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 500);
+    });
   });
 
   // ── Bootstrap diagnostic ─────────────────────────────────────────────────────

@@ -270,3 +270,26 @@ async def list_campaigns():
     for c in campaigns:
         c["id"] = str(c.pop("_id"))
     return campaigns
+
+
+@router.delete("/{scan_id}", summary="Delete a campaign")
+async def delete_campaign(scan_id: str):
+    db = get_db()
+    await db.scan_results.delete_many({"scan_id": scan_id})
+    await db.hosts.delete_many({"scan_id": scan_id})
+    await db.vulns.delete_many({"scan_id": scan_id})
+    await db.auth_results.delete_many({"scan_id": scan_id})
+    r = await db.campaigns.delete_one({"_id": ObjectId(scan_id)})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Campagne introuvable")
+    return {"deleted": scan_id}
+
+
+@router.delete("/", summary="Delete all campaigns")
+async def delete_all_campaigns():
+    db = get_db()
+    total = 0
+    for col in ["campaigns", "scan_results", "hosts", "vulns", "auth_results"]:
+        r = await db[col].delete_many({})
+        total += r.deleted_count
+    return {"deleted": total}

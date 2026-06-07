@@ -56,7 +56,7 @@ async def wifi_status():
 async def wifi_scan():
     hw = await _check_wifi_hw()
     if not hw["available"]:
-        raise HTTPException(400, "Aucune interface WiFi disponible sur ce serveur")
+        return {"networks": [], "count": 0, "note": "Aucune interface WiFi disponible sur ce serveur"}
 
     networks = []
     out, err = await _run("iw dev " + hw["interfaces"][0] + " scan 2>/dev/null")
