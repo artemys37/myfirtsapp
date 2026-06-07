@@ -554,7 +554,10 @@
             <input id="auth-scan-id" type="text" placeholder="scan_id..." class="input-field w-full rounded px-3 py-2.5 text-sm" />
           </div>
           <div>
-            <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-2">Credentials (user:pass par ligne)</label>
+            <div class="flex items-center justify-between mb-2">
+              <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest">Credentials (user:pass par ligne)</label>
+              <button onclick="loadWordlistCreds()" class="text-xs mono text-[var(--acid)] hover:underline" title="Charger un échantillon depuis rockyou.txt">📂 rockyou.txt</button>
+            </div>
             <textarea id="auth-creds" rows="5" placeholder="admin:admin&#10;root:toor&#10;admin:password" class="input-field w-full rounded px-3 py-2.5 text-sm resize-none"></textarea>
           </div>
           <div class="grid grid-cols-2 gap-4">
@@ -589,8 +592,11 @@
   <!-- ── TERMINAL MODAL ── -->
   <div id="terminal-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
     <div class="stat-card rounded-xl overflow-hidden w-[90vw] h-[85vh] flex flex-col">
-      <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)]">
-        <span id="terminal-title" class="mono text-xs text-[var(--acid)] uppercase tracking-widest">Terminal</span>
+      <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+        <div class="flex flex-col gap-1">
+          <span id="terminal-title" class="mono text-xs text-[var(--acid)] uppercase tracking-widest">Terminal</span>
+          <div id="terminal-connect-info" class="mono text-xs"></div>
+        </div>
         <button onclick="closeTerminal()" class="text-[var(--muted)] hover:text-[var(--red)] text-xl leading-none">&times;</button>
       </div>
       <div id="terminal-container" class="flex-1 bg-black p-2"></div>
@@ -801,6 +807,17 @@
 
     <!-- Tool cards grid -->
     <div id="tools-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+  </div>
+
+  <!-- ── TOOL MODAL ── -->
+  <div id="tool-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div class="stat-card rounded-xl overflow-hidden w-[90vw] max-w-3xl max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)] shrink-0">
+        <span id="tool-modal-title" class="mono text-sm text-[var(--acid)] uppercase tracking-widest flex items-center gap-2"></span>
+        <button onclick="closeToolModal()" class="text-[var(--muted)] hover:text-[var(--red)] text-xl leading-none">&times;</button>
+      </div>
+      <div id="tool-modal-body" class="flex-1 overflow-y-auto p-6 space-y-4"></div>
+    </div>
   </div>
 
 </main>
@@ -1192,6 +1209,19 @@
   }
 
   // ── Auth Test ─────────────────────────────────────────────────────────────────
+  async function loadWordlistCreds() {
+    try {
+      const data = await fetchJSON('/auth-test/wordlist-sample?lines=30');
+      if (data.credentials && data.credentials.length) {
+        const textarea = document.getElementById('auth-creds');
+        textarea.value = data.credentials.join('\n');
+        addLog(`Échantillon chargé: ${data.credentials.length} credentials depuis ${data.source}`, 'info');
+      }
+    } catch(e) {
+      addLog('Impossible de charger rockyou.txt: ' + e.message, 'warn');
+    }
+  }
+
   async function runAuthTest() {
     const ip = document.getElementById('auth-ip').value.trim();
     const port = parseInt(document.getElementById('auth-port').value);
@@ -1217,7 +1247,6 @@
         max_attempts: maxAttempts, delay_seconds: delay, scan_id: scanId
       });
       let rows = '';
-      let autoOpened = false;
       data.results.forEach(r => {
         const btnOpen = r.success
           ? `<button class="btn-ghost rounded px-2 py-0.5 text-xs mono ml-auto text-[var(--acid)] hover:bg-[var(--acid-dim)]" onclick="openTerminal('${encodeURIComponent(r.host_ip)}',${r.port},'${encodeURIComponent(r.username)}','${encodeURIComponent(r.password)}','${encodeURIComponent(r.service)}')">⟐ CONNECTER</button>`
@@ -1232,10 +1261,6 @@
             ${btnOpen}
           </div>
         </div>`;
-        if (r.success && !autoOpened) {
-          autoOpened = true;
-          setTimeout(() => openTerminal(encodeURIComponent(r.host_ip), r.port, encodeURIComponent(r.username), encodeURIComponent(r.password), encodeURIComponent(r.service)), 500);
-        }
       });
       resultsEl.innerHTML = rows || '<div class="mono text-xs text-[var(--muted)]">Aucun résultat.</div>';
       addLog(`Auth test terminé: ${data.tested} tentative(s)`, data.results.some(r=>r.success) ? 'warn' : 'success');
@@ -1383,6 +1408,16 @@
 
     const container = document.getElementById('terminal-container');
     container.innerHTML = '';
+
+    // Connection info for PuTTY/manual use
+    document.getElementById('terminal-connect-info').innerHTML = `
+      <span class="text-xs text-[var(--muted)]">
+        <span class="text-[var(--acid)]">${service.toUpperCase()}</span>
+        ${username}@${host}:${port}
+        ${password ? `<span class="text-[var(--orange)]">pass: ${password}</span>` : ''}
+        <a href="https://www.putty.org" target="_blank" class="text-[var(--acid)] hover:underline" style="margin-left:8px">PuTTY →</a>
+      </span>
+    `;
 
     termInstance = new Terminal({
       cursorBlink: true,
@@ -1550,20 +1585,20 @@
 
   // ── Outils ─────────────────────────────────────────────────────────────────────
   const TOOLS_DATA = [
-    { id: 'nmap', name: 'Nmap', cat: 'recon', desc: 'Scan de ports, découverte réseau et détection d\'OS. Outil de référence pour la cartographie réseau.', icon: '🔍', link: 'https://nmap.org' },
-    { id: 'wireshark', name: 'Wireshark', cat: 'network', desc: 'Analyseur de paquets réseau en temps réel. Inspection de trames, filtres d\'affichage et décodage de protocoles.', icon: '📡', link: 'https://wireshark.org' },
-    { id: 'burpsuite', name: 'Burp Suite', cat: 'web', desc: 'Proxy d\'interception pour tests d\'intrusion web. Scanner de vulnérabilités, repeater, intruder.', icon: '🕷️', link: 'https://portswigger.net/burp' },
-    { id: 'nikto', name: 'Nikto', cat: 'web', desc: 'Scanner de serveurs web. Détecte les fichiers dangereux, CGI obsolètes et configurations par défaut.', icon: '🌐', link: 'https://cirt.net/Nikto2' },
-    { id: 'gobuster', name: 'Gobuster', cat: 'web', desc: 'Bruteforce de répertoires/fichiers web et de sous-domaines DNS. Rapide et efficace.', icon: '🔎', link: 'https://github.com/OJ/gobuster' },
-    { id: 'dirbuster', name: 'DirBuster', cat: 'web', desc: 'Bruteforce multi-threadé de répertoires et fichiers web. Interface graphique Java.', icon: '📂', link: 'https://www.kali.org/tools/dirbuster/' },
-    { id: 'openvas', name: 'OpenVAS', cat: 'vuln', desc: 'Scanner de vulnérabilités open-source. Base de CVEs exhaustive et rapports détaillés.', icon: '🛡️', link: 'https://www.greenbone.net' },
-    { id: 'nessus', name: 'Nessus', cat: 'vuln', desc: 'Scanner de vulnérabilités professionnel. Détection de failles, conformité et audit de configuration.', icon: '⚠️', link: 'https://www.tenable.com/products/nessus' },
-    { id: 'hydra', name: 'Hydra', cat: 'auth', desc: 'Bruteforceur de mots de passe parallélisé. Supporte SSH, FTP, HTTP, SMB, RDP + 50 protocoles.', icon: '🔐', link: 'https://github.com/vanhauser-thc/thc-hydra' },
-    { id: 'john', name: 'John the Ripper', cat: 'auth', desc: 'Craqueur de mots de passe polyvalent. Supporte hashs Unix, Windows, ZIP, RAR, PDF, etc.', icon: '⚡', link: 'https://www.openwall.com/john/' },
-    { id: 'hashcat', name: 'Hashcat', cat: 'auth', desc: 'Craqueur de hashs accéléré GPU. Modes d\'attaque par dictionnaire, brute-force, règles et masque.', icon: '🔥', link: 'https://hashcat.net/hashcat/' },
-    { id: 'aircrack', name: 'Aircrack-ng', cat: 'wifi', desc: 'Suite de craquage WiFi. Capture de paquets, dé-auth, craquage WEP/WPA, analyse de réseau.', icon: '📶', link: 'https://www.aircrack-ng.org' },
-    { id: 'kismet', name: 'Kismet', cat: 'wifi', desc: 'Détecteur de réseaux sans-fil, sniffer et IDS. Supporte WiFi, Bluetooth, SDR.', icon: '📻', link: 'https://www.kismetwireless.net' },
-    { id: 'zip', name: '7-Zip', cat: 'archives', desc: 'Gestionnaire d\'archives. Extraction et craquage de mots de passe sur fichiers ZIP, RAR, 7z.', icon: '🗜️', link: 'https://www.7-zip.org' },
+    { id: 'nmap', name: 'Nmap', cat: 'recon', desc: 'Scan de ports, découverte réseau et détection d\'OS. Outil de référence pour la cartographie réseau.', icon: '🔍' },
+    { id: 'wireshark', name: 'Wireshark', cat: 'network', desc: 'Analyseur de paquets réseau en temps réel. Inspection de trames, filtres et décodage.', icon: '📡' },
+    { id: 'burpsuite', name: 'Burp Suite', cat: 'web', desc: 'Proxy d\'interception pour tests d\'intrusion web. Scanner, repeater, intruder.', icon: '🕷️' },
+    { id: 'nikto', name: 'Nikto', cat: 'web', desc: 'Scanner de serveurs web. Détecte fichiers dangereux, CGI obsolètes.', icon: '🌐' },
+    { id: 'gobuster', name: 'Gobuster', cat: 'web', desc: 'Bruteforce de répertoires/fichiers web et sous-domaines DNS.', icon: '🔎' },
+    { id: 'dirbuster', name: 'DirBuster', cat: 'web', desc: 'Bruteforce multi-threadé de répertoires et fichiers web.', icon: '📂' },
+    { id: 'openvas', name: 'OpenVAS', cat: 'vuln', desc: 'Scanner de vulnérabilités open-source. Base de CVEs exhaustive.', icon: '🛡️' },
+    { id: 'nessus', name: 'Nessus', cat: 'vuln', desc: 'Scanner de vulnérabilités professionnel. Détection de failles et conformité.', icon: '⚠️' },
+    { id: 'hydra', name: 'Hydra', cat: 'auth', desc: 'Bruteforceur de mots de passe parallélisé. 50+ protocoles supportés.', icon: '🔐' },
+    { id: 'john', name: 'John the Ripper', cat: 'auth', desc: 'Craqueur de mots de passe polyvalent. Hashs Unix, ZIP, PDF, etc.', icon: '⚡' },
+    { id: 'hashcat', name: 'Hashcat', cat: 'auth', desc: 'Craqueur de hashs accéléré GPU. Dictionnaire, brute-force, masque.', icon: '🔥' },
+    { id: 'aircrack', name: 'Aircrack-ng', cat: 'wifi', desc: 'Suite de craquage WiFi. Capture, dé-auth, craquage WEP/WPA.', icon: '📶' },
+    { id: 'kismet', name: 'Kismet', cat: 'wifi', desc: 'Détecteur de réseaux sans-fil, sniffer et IDS. WiFi, Bluetooth, SDR.', icon: '📻' },
+    { id: 'zip', name: '7-Zip', cat: 'archives', desc: 'Gestionnaire d\'archives. Extraction et test de mots de passe ZIP, RAR, 7z.', icon: '🗜️' },
   ];
 
   const CATEGORIES = {
@@ -1576,6 +1611,83 @@
     archives: { label: 'Récupération & Audit de Fichiers', icon: '🗜️' },
   };
 
+  const TOOL_MODAL_FORMS = {
+    nmap: {
+      title: '🔍 Nmap — Scan de ports',
+      fields: [
+        { id: 'nmap-target', label: 'Cible (IP / domaine)', type: 'text', placeholder: '192.168.1.1', val: '' },
+        { id: 'nmap-ports', label: 'Ports', type: 'text', placeholder: '22,80,443,8080', val: '22,80,443,8080' },
+        { id: 'nmap-flags', label: 'Flags', type: 'text', placeholder: '-sV -T4', val: '-sV -T4' },
+      ],
+      endpoint: '/api/tools/nmap/run',
+      body: (f) => ({ target: f['nmap-target'], ports: f['nmap-ports'], flags: f['nmap-flags'] }),
+    },
+    nikto: {
+      title: '🌐 Nikto — Scan de serveur web',
+      fields: [
+        { id: 'nikto-url', label: 'URL cible', type: 'text', placeholder: 'http://192.168.1.1', val: '' },
+      ],
+      endpoint: '/api/tools/nikto/run',
+      body: (f) => ({ url: f['nikto-url'] }),
+    },
+    gobuster: {
+      title: '🔎 Gobuster — Bruteforce de répertoires',
+      fields: [
+        { id: 'gobuster-url', label: 'URL cible', type: 'text', placeholder: 'http://192.168.1.1', val: '' },
+        { id: 'gobuster-wordlist', label: 'Wordlist', type: 'text', placeholder: '/usr/share/dirb/wordlists/common.txt', val: '' },
+      ],
+      endpoint: '/api/tools/gobuster/run',
+      body: (f) => ({ url: f['gobuster-url'], wordlist: f['gobuster-wordlist'] }),
+    },
+    hydra: {
+      title: '🔐 Hydra — Bruteforce de mots de passe',
+      redirect: 'auth',
+      msg: 'Utilisez la page Auth Tests (intégrée) pour les tests de bruteforce SSH, FTP, Telnet, SMB, RDP.',
+      fields: [],
+    },
+    john: {
+      title: '⚡ John the Ripper — Craquage de hash',
+      fields: [
+        { id: 'john-hash', label: 'Hash à craquer', type: 'textarea', placeholder: '5d41402abc4b2a76b9719d911017c592', val: '' },
+        { id: 'john-format', label: 'Type de hash (raw-md5, raw-sha1, raw-sha256)', type: 'text', placeholder: 'raw-md5', val: 'raw-md5' },
+        { id: 'john-wordlist', label: 'Wordlist', type: 'text', placeholder: '/usr/share/dirb/wordlists/common.txt', val: '' },
+
+        { id: 'hashcat-format', label: 'Type de hash (raw-md5, raw-sha1, raw-sha256)', type: 'text', placeholder: 'raw-md5', val: 'raw-md5' },
+        { id: 'hashcat-wordlist', label: 'Wordlist', type: 'text', placeholder: '/usr/share/dirb/wordlists/common.txt', val: '' },
+      ],
+      endpoint: '/api/tools/hashcat/run',
+      body: (f) => ({ hash: f['hashcat-hash'], hash_type: f['hashcat-format'], wordlist: f['hashcat-wordlist'] }),
+    },
+    zip: {
+      title: '🗜️ 7-Zip — Test d\'archive protégée',
+      fields: [
+        { id: '7z-file', label: 'Chemin du fichier', type: 'text', placeholder: '/tmp/archive.zip', val: '' },
+        { id: '7z-pass', label: 'Mot de passe (optionnel pour test)', type: 'text', placeholder: 'Laissez vide pour lister', val: '' },
+      ],
+      endpoint: '/api/tools/7z/run',
+      body: (f) => ({ filepath: f['7z-file'], password: f['7z-pass'] || null }),
+    },
+    dirb: {
+      title: '📂 DirBuster/DIRB — Scan de répertoires web',
+      fields: [
+        { id: 'dirb-url', label: 'URL cible', type: 'text', placeholder: 'http://192.168.1.1', val: '' },
+      ],
+      endpoint: '/api/tools/dirb/run',
+      body: (f) => ({ url: f['dirb-url'] }),
+    },
+  };
+
+  let TOOL_STATUS = {};
+
+  async function checkToolStatus() {
+    try {
+      TOOL_STATUS = await fetchJSON('/tools/check');
+    } catch(e) {
+      TOOL_STATUS = {};
+    }
+    renderTools();
+  }
+
   function renderTools() {
     const search = document.getElementById('tools-search').value.toLowerCase();
     const catFilter = document.getElementById('tools-cat-filter').value;
@@ -1586,27 +1698,133 @@
       return matchSearch && matchCat;
     });
 
-    // Counters
     document.getElementById('tools-count').textContent = `${filtered.length} / ${TOOLS_DATA.length} outils`;
 
-    // Cards
     const grid = document.getElementById('tools-grid');
     grid.innerHTML = filtered.map(t => {
       const cat = CATEGORIES[t.cat] || {};
-      return `<div class="tool-card stat-card rounded-lg p-5 flex flex-col">
+      const status = TOOL_STATUS[t.id];
+      const formDef = TOOL_MODAL_FORMS[t.id];
+      const isExternal = !formDef || formDef.redirect;
+      const isInstalled = status && status.installed === true;
+      let badge = '';
+      let clickable = false;
+      let onclick = '';
+
+      if (formDef && formDef.redirect) {
+        badge = `<span class="mono text-[10px] text-[var(--orange)] uppercase tracking-widest bg-[var(--orange)]/15 rounded px-2 py-0.5">Utilisez page Auth</span>`;
+        onclick = `showPage('${formDef.redirect}')`;
+        clickable = true;
+      } else if (isExternal) {
+        badge = `<span class="mono text-[10px] text-[var(--muted)] uppercase tracking-widest bg-[var(--border)]/50 rounded px-2 py-0.5">Référence</span>`;
+      } else if (isInstalled) {
+        badge = `<span class="mono text-[10px] text-[var(--acid)] uppercase tracking-widest bg-[var(--acid)]/15 rounded px-2 py-0.5">Installé ✓</span>`;
+        clickable = true;
+        onclick = `openTool('${t.id}')`;
+      } else {
+        badge = `<span class="mono text-[10px] text-[var(--yellow)] uppercase tracking-widest bg-[var(--yellow)]/10 rounded px-2 py-0.5">Fallback Python</span>`;
+        clickable = true;
+        onclick = `openTool('${t.id}')`;
+      }
+
+      return `<div class="tool-card stat-card rounded-lg p-5 flex flex-col ${clickable ? 'cursor-pointer' : ''}" ${onclick ? `onclick="${onclick}"` : ''}>
         <div class="flex items-start justify-between mb-3">
           <span class="text-3xl">${t.icon}</span>
-          <span class="mono text-[10px] text-[var(--muted)] uppercase tracking-widest bg-[var(--border)]/50 rounded px-2 py-0.5">${cat.label || t.cat}</span>
+          ${badge}
         </div>
         <h3 class="text-base font-bold tracking-tight mb-1">${t.name}</h3>
         <p class="text-xs text-[var(--muted)] leading-relaxed flex-1 mb-4">${t.desc}</p>
-        <a href="${t.link}" target="_blank" class="tool-link self-start text-xs mono uppercase tracking-widest">Site officiel ↗</a>
+        <div class="flex items-center gap-2 mt-auto">
+          ${clickable ? `<span class="text-xs mono text-[var(--acid)] uppercase tracking-widest">Lancer →</span>` : `<span class="text-xs mono text-[var(--muted)] uppercase tracking-widest">Documentation</span>`}
+        </div>
       </div>`;
     }).join('') || '<div class="col-span-full text-center py-12 text-[var(--muted)] mono text-sm">Aucun outil trouvé.</div>';
   }
 
+  function openTool(id) {
+    const formDef = TOOL_MODAL_FORMS[id];
+    const tool = TOOLS_DATA.find(t => t.id === id);
+    if (!tool) return;
+
+    // Redirect tools (e.g. hydra → auth page)
+    if (formDef && formDef.redirect) {
+      addLog(`${tool.name}: ${formDef.msg || 'Redirection vers une autre page'}`, 'warn');
+      if (formDef.redirect === 'auth') {
+        closeToolModal();
+        showPage('auth');
+      }
+      return;
+    }
+
+    if (!formDef) {
+      addLog(`Outil "${tool.name}" — documentation disponible en ligne`, 'info');
+      return;
+    }
+
+    const titleEl = document.getElementById('tool-modal-title');
+    titleEl.innerHTML = `${tool.icon} ${tool.name}`;
+
+    const body = document.getElementById('tool-modal-body');
+    let html = `<p class="text-xs text-[var(--muted)] mb-4">${tool.desc}</p>`;
+
+    html += formDef.fields.map(f => {
+      if (f.type === 'textarea') {
+        return `<div class="mb-3">
+          <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">${f.label}</label>
+          <textarea id="${f.id}" class="input-field w-full rounded px-3 py-2 text-sm" rows="4" placeholder="${f.placeholder || ''}">${f.val || ''}</textarea>
+        </div>`;
+      }
+      return `<div class="mb-3">
+        <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">${f.label}</label>
+        <input id="${f.id}" type="${f.type}" class="input-field w-full rounded px-3 py-2 text-sm" placeholder="${f.placeholder || ''}" value="${f.val || ''}" />
+      </div>`;
+    }).join('');
+
+    html += `<button onclick="runTool('${id}')" class="btn-primary w-full rounded py-2.5 text-sm tracking-widest uppercase">▶ EXÉCUTER</button>`;
+    html += `<div id="tool-output" class="bg-[#050810] rounded p-4 mt-4 mono text-xs text-[var(--text)] max-h-64 overflow-y-auto hidden"></div>`;
+
+    body.innerHTML = html;
+    document.getElementById('tool-modal').classList.remove('hidden');
+  }
+
+  function closeToolModal() {
+    document.getElementById('tool-modal').classList.add('hidden');
+  }
+
+  async function runTool(id) {
+    const formDef = TOOL_MODAL_FORMS[id];
+    if (!formDef) return;
+
+    const fields = {};
+    formDef.fields.forEach(f => {
+      const el = document.getElementById(f.id);
+      fields[f.id] = el ? el.value : '';
+    });
+
+    const outputEl = document.getElementById('tool-output');
+    outputEl.innerHTML = '<span class="text-[var(--yellow)]">Exécution en cours...</span>';
+    outputEl.classList.remove('hidden');
+
+    try {
+      const body = formDef.body(fields);
+      const resp = await fetch(formDef.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.detail || 'Erreur');
+      const out = data.output || JSON.stringify(data, null, 2);
+      const lines = out.split('\n');
+      outputEl.innerHTML = lines.map(l => `<span>${l}</span>`).join('\n');
+      addLog(`Outil ${id} terminé (code ${data.exit_code})`, data.exit_code === 0 ? 'success' : 'warn');
+    } catch(e) {
+      outputEl.innerHTML = `<span class="text-[var(--red)]">Erreur: ${e.message}</span>`;
+      addLog(`Erreur outil ${id}: ${e.message}`, 'error');
+    }
+  }
+
   function initTools() {
-    // Populate category filter
     const sel = document.getElementById('tools-cat-filter');
     Object.entries(CATEGORIES).forEach(([key, val]) => {
       const opt = document.createElement('option');
@@ -1615,16 +1833,16 @@
       sel.appendChild(opt);
     });
 
-    // Category stats bar
     const statsEl = document.getElementById('tools-cat-stats');
     const counts = {};
     TOOLS_DATA.forEach(t => { counts[t.cat] = (counts[t.cat] || 0) + 1; });
     statsEl.innerHTML = Object.entries(CATEGORIES).map(([key, val]) => {
       const cnt = counts[key] || 0;
-      return `<span class="stat-chip rounded px-3 py-1 text-xs mono" data-cat="${key}" onclick="document.getElementById('tools-cat-filter').value='${key}';renderTools()">${val.icon} ${val.label} <span class="text-[var(--muted)]">(${cnt})</span></span>`;
-    }).join('') + `<span class="stat-chip rounded px-3 py-1 text-xs mono" onclick="document.getElementById('tools-cat-filter').value='';renderTools()">✕ Tout</span>`;
+      return `<span class="stat-chip rounded px-3 py-1 text-xs mono cursor-pointer" onclick="document.getElementById('tools-cat-filter').value='${key}';renderTools()">${val.icon} ${val.label} <span class="text-[var(--muted)]">(${cnt})</span></span>`;
+    }).join('') + `<span class="stat-chip rounded px-3 py-1 text-xs mono cursor-pointer" onclick="document.getElementById('tools-cat-filter').value='';renderTools()">✕ Tout</span>`;
 
     renderTools();
+    checkToolStatus();
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────────

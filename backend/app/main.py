@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .db import connect_db, close_db
-from .routers import scan, vulns, auth_test, reports, integration, sqli, auth, terminal, wifi
+from .routers import scan, vulns, auth_test, reports, integration, sqli, auth, terminal, wifi, tools
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,6 +35,7 @@ app.include_router(integration.router, prefix="/api/integration", tags=["Integra
 app.include_router(sqli.router,        prefix="/api/sqli",       tags=["SQL Injection"])
 app.include_router(terminal.router,    prefix="/api/terminal",  tags=["Terminal"])
 app.include_router(wifi.router,        prefix="/api/wifi",      tags=["WiFi"])
+app.include_router(tools.router,       prefix="/api/tools",     tags=["Tools"])
 
 @app.get("/health")
 async def health():

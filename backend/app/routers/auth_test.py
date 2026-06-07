@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-import asyncio, asyncssh, aioftp, telnetlib, uuid
+import asyncio, asyncssh, aioftp, telnetlib, os
 from datetime import datetime
 
 from ..db import get_db
@@ -29,6 +29,7 @@ async def test_smb(ip: str, port: int, user: str, password: str) -> bool:
     try:
         from smbprotocol.connection import Connection
         from smbprotocol.session import Session
+        import uuid
         conn = Connection(uuid.uuid4(), ip, port)
         conn.connect()
         session = Session(conn, user, password)
@@ -77,6 +78,29 @@ SERVICE_TESTERS = {
     "telnet": test_telnet,
     "rdp": test_rdp,
 }
+
+@router.get("/wordlist-sample", summary="Get sample lines from rockyou.txt as credentials")
+async def get_wordlist_sample(lines: int = 30):
+    wordlist_paths = [
+        "/usr/share/wordlists/rockyou.txt",
+        "/usr/share/dirb/wordlists/common.txt",
+    ]
+    for wp in wordlist_paths:
+        if os.path.isfile(wp):
+            sample_lines = []
+            with open(wp, errors="replace") as f:
+                for i, line in enumerate(f):
+                    if i >= lines:
+                        break
+                    s = line.strip()
+                    if s:
+                        sample_lines.append(s)
+            return {
+                "source": wp,
+                "sample_count": len(sample_lines),
+                "credentials": [f"admin:{w}" for w in sample_lines]
+            }
+    return {"source": None, "sample_count": 0, "credentials": []}
 
 @router.post("/run", summary="Run authorised authentication tests")
 async def run_auth_tests(config: AuthTestConfig):
