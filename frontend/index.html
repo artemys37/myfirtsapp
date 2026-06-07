@@ -298,6 +298,15 @@
         <div class="log-entry success"><span class="text-[var(--muted)]">00:00:00</span> <span class="text-[var(--acid)]">Plateforme initialisée</span></div>
       </div>
     </div>
+
+    <!-- Tunnel URL -->
+    <div id="tunnel-info" class="stat-card rounded-lg p-4 hidden">
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-[var(--muted)] mono">🔗 Accès externe :</span>
+        <a id="tunnel-url-link" href="#" target="_blank" class="text-xs mono text-[var(--acid)] hover:underline break-all"></a>
+        <span id="tunnel-url-loading" class="text-xs text-[var(--yellow)] mono">Chargement...</span>
+      </div>
+    </div>
   </div>
 
   <!-- ── SCAN ── -->
@@ -843,6 +852,21 @@
   }
 
   // ── Log helper ──────────────────────────────────────────────────────────────
+  async function checkTunnelUrl() {
+    try {
+      const data = await fetchJSON('/tunnel-url');
+      const el = document.getElementById('tunnel-info');
+      const link = document.getElementById('tunnel-url-link');
+      const loading = document.getElementById('tunnel-url-loading');
+      if (data && data.url) {
+        link.textContent = data.url;
+        link.href = data.url;
+        el.classList.remove('hidden');
+        loading.classList.add('hidden');
+      }
+    } catch(e) { /* tunnel non disponible */ }
+  }
+
   function addLog(msg, type = '') {
     const log = document.getElementById('activity-log');
     const now = new Date().toTimeString().slice(0,8);
@@ -1380,6 +1404,7 @@
       document.getElementById('stat-col-auth').textContent = stats.auth_results ?? '—';
       document.getElementById('stat-col-reports').textContent = stats.reports ?? '—';
 
+      checkTunnelUrl();
       addLog('Statut intégration mis à jour', 'success');
     } catch(e) {
       setComponentStatus('backend', false, 'Injoignable');

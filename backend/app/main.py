@@ -1,13 +1,85 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import json, os, smtplib, threading, logging
+
+logger = logging.getLogger("uvicorn")
 
 from .db import connect_db, close_db
 from .routers import scan, vulns, auth_test, reports, integration, sqli, auth, terminal, wifi, tools
 
+TUNNEL_URL_FILE = "/tunnel/url.json"
+SENT_URLS_FILE = "/tmp/.sent_urls.json"
+
+SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER     = os.getenv("SMTP_USER", "37artemys@gmail.com")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+EMAIL_TO      = os.getenv("EMAIL_TO", "37artemys@gmail.com")
+
+def send_tunnel_email(url: str) -> bool:
+    if not SMTP_PASSWORD:
+        logger.warning("SMTP_PASSWORD non défini — email non envoyé")
+        return False
+    subject = "NetAudit Tunnel — Nouvelle URL"
+    body = f"""Bonjour,
+
+Le tunnel Cloudflare est prêt. Voici l'URL pour accéder à la plateforme NetAudit depuis l'extérieur :
+
+🌐 {url}
+
+Cette URL changera au prochain redémarrage du conteneur tunnel.
+
+—
+NetAudit Platform
+"""
+    msg = f"Subject: {subject}\nContent-Type: text/plain; charset=utf-8\n\n{body}"
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as s:
+            s.starttls()
+            s.login(SMTP_USER, SMTP_PASSWORD)
+            s.sendmail(SMTP_USER, [EMAIL_TO], msg.encode("utf-8"))
+        logger.info("Email tunnel envoyé à %s", EMAIL_TO)
+        return True
+    except Exception as e:
+        logger.error("Échec envoi email: %s", e)
+        return False
+
+def load_sent_urls() -> set:
+    try:
+        return set(json.loads(open(SENT_URLS_FILE).read()))
+    except Exception:
+        return set()
+
+def save_sent_urls(urls: set):
+    try:
+        open(SENT_URLS_FILE, "w").write(json.dumps(list(urls)))
+    except Exception:
+        pass
+
+def watch_tunnel_url():
+    sent_urls = load_sent_urls()
+    logger.info("Veilleur tunnel démarré — %d URL déjà notifiées", len(sent_urls))
+    while True:
+        try:
+            if os.path.isfile(TUNNEL_URL_FILE):
+                data = json.loads(open(TUNNEL_URL_FILE).read())
+                url = data.get("url")
+                if url and url not in sent_urls:
+                    logger.info("Nouvelle URL tunnel détectée: %s", url)
+                    if send_tunnel_email(url):
+                        sent_urls.add(url)
+                        save_sent_urls(sent_urls)
+        except Exception as e:
+            logger.error("Erreur watch_tunnel_url: %s", e)
+        threading.Event().wait(30)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
+    t = threading.Thread(target=watch_tunnel_url, daemon=True)
+    t.start()
+    logger.info("Thread veilleur tunnel démarré")
     yield
     await close_db()
 
@@ -40,3 +112,12 @@ app.include_router(tools.router,       prefix="/api/tools",     tags=["Tools"])
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/tunnel-url")
+async def tunnel_url():
+    if os.path.isfile(TUNNEL_URL_FILE):
+        try:
+            return json.loads(open(TUNNEL_URL_FILE).read())
+        except Exception:
+            pass
+    return {"url": None, "updated": None}

@@ -56,6 +56,11 @@ services:
     environment:
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: 37artemys@gmail.com
+      SMTP_PASSWORD: uwgn czew ilok buio
+      EMAIL_TO: 37artemys@gmail.com
     ports:
       - "8000:8000"
     depends_on:
@@ -65,6 +70,7 @@ services:
       - netaudit_net
     volumes:
       - ./backend:/app
+      - tunnel_data:/tunnel
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -97,19 +103,55 @@ services:
 
   # ── Cloudflare Tunnel ──────────────────────────────────────────────────────
   tunnel:
-    image: cloudflare/cloudflared:latest
+    image: alpine:3.20
     container_name: netaudit_tunnel
     restart: unless-stopped
-    command: tunnel --url http://netaudit_frontend:80 --no-autoupdate
+    command: >
+      sh -c "
+        apk add --no-cache curl >/dev/null 2>&1 &&
+        if [ ! -f /cache/cloudflared ]; then
+          echo '=== ⬇️ Téléchargement de cloudflared...' &&
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared &&
+          cp /tmp/cloudflared /cache/cloudflared;
+        else
+          echo '=== ♻️ Utilisation de cloudflared en cache' &&
+          cp /cache/cloudflared /tmp/cloudflared;
+        fi &&
+        chmod +x /tmp/cloudflared &&
+        echo '=== 🚀 NET AUDIT TUNNEL — démarrage...' &&
+        /tmp/cloudflared tunnel --url http://netaudit_frontend:80 --no-autoupdate 2>&1 |
+        tee -a /tmp/tunnel.log |
+        while IFS= read -r line; do
+          echo \"$$line\";
+          url=\"$$(printf '%s' \"$$line\" | grep -o 'https://[a-z0-9-]*\.trycloudflare\.com')\";
+          if [ -n \"$$url\" ]; then
+            echo '{\"url\":\"'$$url'\",\"updated\":\"'$$(date -Iseconds)'\"}' > /shared/url.json;
+            echo '{\"url\":\"'$$url'\",\"updated\":\"'$$(date -Iseconds)'\"}' > /host/url-tunnel.txt;
+            echo '';
+            echo '╔══════════════════════════════════════════════╗';
+            echo \"║  🌐  TUNNEL PRÊT : $$url\";
+            echo '╚══════════════════════════════════════════════╝';
+            echo '';
+            echo '📁 Fichier host: cat ~/url-tunnel.txt';
+            echo '📁 Docker logs:  docker logs netaudit_tunnel | grep trycloudflare';
+          fi;
+        done
+      "
     depends_on:
       frontend:
         condition: service_started
+    volumes:
+      - tunnel_data:/shared
+      - /home/artemys20:/host
+      - tunnel_cache:/cache
     networks:
       - netaudit_net
 
 volumes:
   mongo_data:
     driver: local
+  tunnel_data:
+  tunnel_cache:
 
 networks:
   netaudit_net:

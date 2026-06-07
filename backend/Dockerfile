@@ -62,7 +62,9 @@ RUN ln -sf /opt/hashcat/hashcat-7.1.2/hashcat.bin /usr/local/bin/hashcat && \
     ln -sf /opt/nikto/program/nikto.pl /usr/local/bin/nikto && \
     mkdir -p /usr/share/wordlists /usr/share/dirb
 
-RUN useradd -m -u 1000 appuser && chown -R appuser /app
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser /app && \
+    mkdir -p /tunnel && chown appuser:appuser /tunnel
 USER appuser
 
 COPY --chown=appuser . .
