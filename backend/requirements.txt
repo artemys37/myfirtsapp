@@ -7,3 +7,6 @@ httpx>=0.27.0
 asyncssh>=2.14.0
 aioftp>=0.22.0
 python-multipart>=0.0.9
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+smbprotocol>=1.16.1
