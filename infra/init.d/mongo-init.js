@@ -28,8 +28,6 @@ db.createCollection('hosts');
 db.createCollection('vulns');
 db.createCollection('auth_results');
 db.createCollection('reports');
-db.createCollection('sqli_scans');
-db.createCollection('sqli_findings');
 
 // Indexes for performance
 db.campaigns.createIndex({ created_at: -1 });

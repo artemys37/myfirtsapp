@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
+from bson import ObjectId
 import json, csv, io
 from datetime import datetime, timezone
 
@@ -10,7 +11,7 @@ router = APIRouter()
 
 async def build_report_data(scan_id: str) -> dict:
     db = get_db()
-    campaign = await db.campaigns.find_one({"_id_str": scan_id})
+    campaign = await db.campaigns.find_one({"_id": ObjectId(scan_id)})
     hosts = await db.hosts.find({"scan_id": scan_id}).to_list(1000)
     vulns = await db.vulns.find({"scan_id": scan_id}).to_list(1000)
     auth = await db.auth_results.find({"scan_id": scan_id}).to_list(1000)

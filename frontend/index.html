@@ -847,8 +847,10 @@
           progress.style.width = '100%';
           statusText.textContent = 'DONE';
           appendOutput('[DONE] Scan terminé avec succès', 'var(--acid)');
+          appendOutput('[ANALYZE] Analyse des vulnérabilités...', 'var(--yellow)');
           addLog(`Scan ${id.slice(0,8)}... terminé`, 'success');
           loadCampaigns();
+          analyzeAndLoadVulns(id);
         } else if (data.status === 'failed') {
           clearInterval(interval);
           statusText.textContent = 'FAILED';
@@ -905,6 +907,14 @@
   }
 
   // ── Vulns ─────────────────────────────────────────────────────────────────────
+  async function analyzeAndLoadVulns(scanId) {
+    try {
+      await postJSON(`/vulns/analyze/${scanId}`, {});
+    } catch(e) {
+      // analyze may already have been done, ignore
+    }
+  }
+
   async function loadVulns() {
     const scanId = document.getElementById('vulns-scan-filter').value.trim();
     const sev = document.getElementById('vulns-sev-filter').value;
@@ -912,6 +922,7 @@
     const tbody = document.getElementById('vulns-tbody');
     tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 mono text-xs text-[var(--muted)]">Analyse en cours...</td></tr>';
     try {
+      await analyzeAndLoadVulns(scanId);
       let url = `/vulns/${scanId}`;
       if (sev) url += `?severity=${sev}`;
       const vulns = await fetchJSON(url);

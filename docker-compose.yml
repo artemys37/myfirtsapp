@@ -11,7 +11,7 @@ services:
       MONGO_INITDB_DATABASE: netaudit
     volumes:
       - mongo_data:/data/db
-      - ./infra/mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - ./infra/init.d:/docker-entrypoint-initdb.d:ro
     ports:
       - "27017:27017"
     networks:

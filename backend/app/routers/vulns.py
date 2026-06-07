@@ -136,7 +136,10 @@ async def fetch_cves_for_service(service: str, version: str) -> list[CVE]:
                         m = metrics[key][0]
                         cvss_score = m.get("cvssData", {}).get("baseScore")
                         sev_str = m.get("cvssData", {}).get("baseSeverity", "INFO")
-                        severity = Severity(sev_str.lower()) if sev_str.lower() in Severity._value2member_map_ else Severity.INFO
+                        try:
+                            severity = Severity(sev_str.lower())
+                        except ValueError:
+                            severity = Severity.INFO
                         break
                 cves.append(
                     CVE(
@@ -153,9 +156,14 @@ async def fetch_cves_for_service(service: str, version: str) -> list[CVE]:
 @router.post("/analyze/{scan_id}", summary="Analyse vulnerabilities for a scan")
 async def analyze_scan(scan_id: str):
     db = get_db()
+    existing = await db.vulns.count_documents({"scan_id": scan_id})
+    if existing > 0:
+        return {"analyzed": 0, "note": "already_analyzed"}
+
     hosts = await db.hosts.find({"scan_id": scan_id}).to_list(1000)
     if not hosts:
-        raise HTTPException(404, "No hosts found for this scan")
+        return {"analyzed": 0, "note": "no_hosts"}
+
     inserted = 0
     for host in hosts:
         for port_info in host.get("ports", []):
