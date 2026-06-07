@@ -175,6 +175,7 @@
       <span class="nav-item px-1 py-3" data-page="mitre" onclick="showPage('mitre')">MITRE</span>
       <span class="nav-item px-1 py-3" data-page="sqli" onclick="showPage('sqli')">SQLi</span>
       <span class="nav-item px-1 py-3" data-page="auth" onclick="showPage('auth')">Auth Tests</span>
+      <span class="nav-item px-1 py-3" data-page="wifi" onclick="showPage('wifi')">WiFi</span>
       <span class="nav-item px-1 py-3" data-page="reports" onclick="showPage('reports')">Rapports</span>
       <span class="nav-item px-1 py-3" data-page="integration" onclick="showPage('integration')">Intégration</span>
     </nav>
@@ -567,6 +568,49 @@
         <button onclick="closeTerminal()" class="text-[var(--muted)] hover:text-[var(--red)] text-xl leading-none">&times;</button>
       </div>
       <div id="terminal-container" class="flex-1 bg-black p-2"></div>
+    </div>
+  </div>
+
+  <!-- ── WIFI ── -->
+  <div id="page-wifi" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">SCAN WiFi</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Détection des réseaux et extraction des mots de passe sauvegardés</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <div class="stat-card rounded-lg p-6 text-center">
+        <div class="text-3xl font-bold mono text-[var(--acid)]" id="wifi-stat-networks">—</div>
+        <div class="mono text-xs text-[var(--muted)] mt-1">Réseaux détectés</div>
+      </div>
+      <div class="stat-card rounded-lg p-6 text-center">
+        <div class="text-3xl font-bold mono text-[var(--yellow)]" id="wifi-stat-saved">—</div>
+        <div class="mono text-xs text-[var(--muted)] mt-1">Mots de passe sauvegardés</div>
+      </div>
+      <div class="stat-card rounded-lg p-6 text-center">
+        <div id="wifi-stat-hw" class="text-lg font-bold mono text-[var(--red)]">Indisponible</div>
+        <div class="mono text-xs text-[var(--muted)] mt-1">Interface WiFi</div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3 mb-6">
+      <button onclick="wifiScan()" class="btn-primary rounded px-5 py-2.5 text-sm tracking-wide uppercase flex items-center gap-2">
+        <span>📡</span> SCANNER LES RÉSEAUX
+      </button>
+      <button onclick="wifiSaved()" class="btn-ghost rounded px-5 py-2.5 text-sm tracking-wide uppercase flex items-center gap-2">
+        🔑 MOTS DE PASSE SAUVEGARDÉS
+      </button>
+      <button onclick="wifiStatus()" class="btn-ghost rounded px-4 py-2.5 text-xs mono">⟳ STATUT</button>
+      <span id="wifi-status-msg" class="mono text-xs text-[var(--muted)]"></span>
+    </div>
+
+    <div id="wifi-networks" class="space-y-2 max-h-[600px] overflow-y-auto">
+      <div class="text-[var(--muted)] mono text-sm">Appuyez sur "Scanner les réseaux" pour lancer la détection.</div>
+    </div>
+
+    <div id="wifi-saved-section" class="mt-8 hidden">
+      <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Mots de passe sauvegardés</h2>
+      <div id="wifi-saved-list" class="space-y-2"></div>
     </div>
   </div>
 
@@ -1308,6 +1352,97 @@
     }
     termFit = null;
     document.getElementById('terminal-modal').classList.add('hidden');
+  }
+
+  // ── WiFi ────────────────────────────────────────────────────────────────────
+  async function wifiStatus() {
+    const msg = document.getElementById('wifi-status-msg');
+    msg.textContent = 'Vérification...';
+    try {
+      const data = await fetchJSON('/wifi/status');
+      const hw = document.getElementById('wifi-stat-hw');
+      if (data.hardware.available) {
+        hw.textContent = data.hardware.interfaces.join(', ');
+        hw.style.color = 'var(--acid)';
+      } else {
+        hw.textContent = 'Non disponible';
+        hw.style.color = 'var(--red)';
+      }
+      document.getElementById('wifi-stat-saved').textContent = data.saved_configs;
+      msg.textContent = 'OK';
+    } catch(e) {
+      msg.textContent = 'Erreur: ' + e.message;
+    }
+  }
+
+  async function wifiScan() {
+    const container = document.getElementById('wifi-networks');
+    const msg = document.getElementById('wifi-status-msg');
+    container.innerHTML = '<div class="mono text-xs text-[var(--yellow)]">Scan en cours...</div>';
+    msg.textContent = 'Scan...';
+
+    try {
+      const data = await fetchJSON('/wifi/scan');
+      document.getElementById('wifi-stat-networks').textContent = data.count;
+      if (data.networks.length === 0) {
+        container.innerHTML = '<div class="text-[var(--muted)] mono text-sm">Aucun réseau WiFi détecté.</div>';
+      } else {
+        container.innerHTML = data.networks.map(n => {
+          const sig = n.signal || 0;
+          const bars = sig > -50 ? 4 : sig > -65 ? 3 : sig > -80 ? 2 : 1;
+          const color = sig > -50 ? 'var(--acid)' : sig > -65 ? 'var(--yellow)' : 'var(--orange)';
+          const enc = n.encryption || 'Inconnu';
+          const isOpen = enc === 'OPEN' || enc === '';
+          return `<div class="stat-card rounded-lg p-4 flex items-center gap-4">
+            <div class="text-2xl">${isOpen ? '🌐' : '🔒'}</div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">${n.ssid || '<em class="text-[var(--muted)]">Caché</em>'}</div>
+              <div class="mono text-xs text-[var(--muted)]">${n.bssid || ''} · ${enc}</div>
+            </div>
+            <div class="text-right">
+              <div class="mono text-lg font-bold" style="color:${color}">${'▮'.repeat(bars)}${'▯'.repeat(4-bars)}</div>
+              <div class="mono text-xs text-[var(--muted)]">${sig} dBm</div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+      msg.textContent = data.count + ' réseau(x) trouvé(s)';
+    } catch(e) {
+      container.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
+      msg.textContent = 'Erreur: ' + e.message;
+    }
+  }
+
+  async function wifiSaved() {
+    const section = document.getElementById('wifi-saved-section');
+    const list = document.getElementById('wifi-saved-list');
+    const msg = document.getElementById('wifi-status-msg');
+    section.classList.remove('hidden');
+    list.innerHTML = '<div class="mono text-xs text-[var(--yellow)]">Récupération...</div>';
+    msg.textContent = 'Recherche...';
+
+    try {
+      const data = await fetchJSON('/wifi/saved');
+      document.getElementById('wifi-stat-saved').textContent = data.count;
+      if (data.saved.length === 0) {
+        list.innerHTML = '<div class="text-[var(--muted)] mono text-sm">Aucun mot de passe WiFi sauvegardé trouvé.</div>';
+      } else {
+        list.innerHTML = data.saved.map(s => `
+          <div class="stat-card rounded-lg p-4 flex items-center gap-4">
+            <div class="text-2xl">🔑</div>
+            <div class="flex-1">
+              <div class="font-semibold text-sm">${s.ssid}</div>
+              <div class="mono text-xs text-[var(--muted)]">${s.source}</div>
+            </div>
+            <div class="mono text-sm font-bold text-[var(--acid)]">${s.password || '<span class="text-[var(--red)]">Non trouvé</span>'}</div>
+          </div>
+        `).join('');
+      }
+      msg.textContent = data.count + ' mot(s) de passe trouvé(s)';
+    } catch(e) {
+      list.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
+      msg.textContent = 'Erreur: ' + e.message;
+    }
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────────
