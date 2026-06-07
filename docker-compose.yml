@@ -95,6 +95,18 @@ services:
       timeout: 5s
       retries: 3
 
+  # ── Cloudflare Tunnel ──────────────────────────────────────────────────────
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: netaudit_tunnel
+    restart: unless-stopped
+    command: tunnel --url http://netaudit_frontend:80 --no-autoupdate
+    depends_on:
+      frontend:
+        condition: service_started
+    networks:
+      - netaudit_net
+
 volumes:
   mongo_data:
     driver: local
