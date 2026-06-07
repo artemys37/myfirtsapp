@@ -7,6 +7,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
   <style>
     :root {
       --acid: #00ff9d;
@@ -556,6 +559,17 @@
     </div>
   </div>
 
+  <!-- ── TERMINAL MODAL ── -->
+  <div id="terminal-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div class="stat-card rounded-xl overflow-hidden w-[90vw] h-[85vh] flex flex-col">
+      <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--border)]">
+        <span id="terminal-title" class="mono text-xs text-[var(--acid)] uppercase tracking-widest">Terminal</span>
+        <button onclick="closeTerminal()" class="text-[var(--muted)] hover:text-[var(--red)] text-xl leading-none">&times;</button>
+      </div>
+      <div id="terminal-container" class="flex-1 bg-black p-2"></div>
+    </div>
+  </div>
+
   <!-- ── REPORTS ── -->
   <div id="page-reports" class="page fade-up">
     <div class="mb-8">
@@ -699,6 +713,14 @@
 <!-- ═══════════════════════ JS ═══════════════════════ -->
 <script>
   const API = '/api';
+
+  // ── Global error handler ────────────────────────────────────────────────────
+  window.onerror = function(msg, url, line, col, err) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="position:fixed;top:0;left:0;right:0;z-index:99999;background:#300;color:#f44;padding:12px 20px;font:13px monospace;border-bottom:2px solid #f44">' +
+      '🚨 JS ERROR: ' + msg + ' (ligne ' + line + ':' + col + ')</div>');
+    return false;
+  };
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   function showPage(name) {
@@ -999,7 +1021,7 @@
     if (!url || !scanId) { addLog("URL et Scan ID requis pour SQLi", "warn"); return; }
 
     const resultsEl = document.getElementById("sqli-results");
-    resultsEl.innerHTML = "<div class="mono text-xs text-[var(--yellow)]">Scan SQLi en cours...</div>";
+    resultsEl.innerHTML = '<div class="mono text-xs text-[var(--yellow)]">Scan SQLi en cours...</div>';
 
     try {
       const data2 = await postJSON("/sqli/run", {
@@ -1008,7 +1030,7 @@
       addLog("SQLi lancé: " + data2.sqli_id.slice(0,8) + "...", "success");
       pollSQLi(data2.sqli_id, resultsEl);
     } catch(e) {
-      resultsEl.innerHTML = "<div class="mono text-xs text-[var(--red)]">Erreur: " + e.message + "</div>";
+      resultsEl.innerHTML = '<div class="mono text-xs text-[var(--red)]">Erreur: ' + e.message + '</div>';
       addLog("Erreur SQLi: " + e.message, "error");
     }
   }
@@ -1021,24 +1043,24 @@
           clearInterval(interval);
           const findings = await fetchJSON("/sqli/" + sqliId + "/findings");
           if (findings.length === 0) {
-            resultsEl.innerHTML = "<div class="mono text-xs text-[var(--muted)]">Aucune injection trouvée.</div>";
+            resultsEl.innerHTML = '<div class="mono text-xs text-[var(--muted)]">Aucune injection trouvée.</div>';
           } else {
             resultsEl.innerHTML = findings.map(function(f) {
-              return "<div class="log-entry success py-3">
+              return `<div class="log-entry success py-3">
                 <div class="flex items-center gap-2 mb-1">
-                  <span class="mono text-xs bg-[var(--red)] text-white px-2 py-0.5 rounded">" + f.technique + "</span>
-                  <span class="mono text-xs text-[var(--acid)]">" + (f.parameter || "?") + "</span>
+                  <span class="mono text-xs bg-[var(--red)] text-white px-2 py-0.5 rounded">${f.technique}</span>
+                  <span class="mono text-xs text-[var(--acid)]">${f.parameter || '?'}</span>
                 </div>
-                <div class="mono text-xs text-[var(--text)] ml-1">" + (f.title || "Injection détectée") + "</div>
-                " + (f.payload ? "<div class="mono text-xs text-[var(--orange)] ml-1 mt-1 break-all">Payload: " + f.payload + "</div>" : "") + "
-                " + (f.dbms ? "<div class="mono text-xs text-[var(--muted)] ml-1 mt-1">DBMS: " + f.dbms + "</div>" : "") + "
-              </div>";
+                <div class="mono text-xs text-[var(--text)] ml-1">${f.title || 'Injection détectée'}</div>
+                ${f.payload ? `<div class="mono text-xs text-[var(--orange)] ml-1 mt-1 break-all">Payload: ${f.payload}</div>` : ''}
+                ${f.dbms ? `<div class="mono text-xs text-[var(--muted)] ml-1 mt-1">DBMS: ${f.dbms}</div>` : ''}
+              </div>`;
             }).join("");
           }
           addLog(findings.length + " injection(s) trouvée(s)", findings.length > 0 ? "warn" : "success");
         } else if (status.status === "failed") {
           clearInterval(interval);
-          resultsEl.innerHTML = "<div class="mono text-xs text-[var(--red)]">Échec du scan: " + (status.error || "erreur inconnue") + "</div>";
+          resultsEl.innerHTML = '<div class="mono text-xs text-[var(--red)]">Échec du scan: ' + (status.error || 'erreur inconnue') + '</div>';
         }
       } catch(e) { clearInterval(interval); }
     }, 3000);
@@ -1077,6 +1099,7 @@
             </span>
             <span class="mono text-xs text-[var(--text)]">${r.username}:${r.password}</span>
             <span class="mono text-xs text-[var(--muted)]">${r.service}:${r.port}</span>
+            ${r.success ? `<button class="btn-ghost rounded px-2 py-0.5 text-xs mono ml-auto text-[var(--acid)] hover:bg-[var(--acid-dim)]" onclick="openTerminal('${r.host_ip}',${r.port},'${r.username.replace(/'/g,"\\'")}','${r.password.replace(/'/g,"\\'")}','${r.service}')">⟐ CONNECTER</button>` : ''}
           </div>
         </div>
       `).join('') || '<div class="mono text-xs text-[var(--muted)]">Aucun résultat.</div>';
@@ -1201,6 +1224,92 @@
     }
   }
 
+  // ── Terminal ─────────────────────────────────────────────────────────────────
+  let termSocket = null;
+  let termInstance = null;
+  let termFit = null;
+
+  function openTerminal(host, port, username, password, service) {
+    const title = document.getElementById('terminal-title');
+    title.textContent = `${service.toUpperCase()} — ${username}@${host}:${port}`;
+    document.getElementById('terminal-modal').classList.remove('hidden');
+
+    const container = document.getElementById('terminal-container');
+    container.innerHTML = '';
+
+    termInstance = new Terminal({
+      cursorBlink: true,
+      cursorStyle: 'block',
+      fontSize: 13,
+      fontFamily: '"Share Tech Mono", monospace',
+      theme: {
+        background: '#050810',
+        foreground: '#c0caf5',
+        cursor: '#00ff9d',
+        selectionBackground: '#00ff9d33',
+        black: '#1d202f',
+        red: '#f7768e',
+        green: '#9ece6a',
+        yellow: '#e0af68',
+        blue: '#7aa2f7',
+        magenta: '#bb9af7',
+        cyan: '#7dcfff',
+        white: '#c0caf5',
+      },
+    });
+
+    termFit = new FitAddon.FitAddon();
+    termInstance.loadAddon(termFit);
+
+    termInstance.open(container);
+    termFit.fit();
+
+    const enc = (s) => encodeURIComponent(s);
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${window.location.host}/api/terminal/ws?host=${enc(host)}&port=${port}&username=${enc(username)}&password=${enc(password)}&service=${enc(service)}`;
+
+    termSocket = new WebSocket(wsUrl);
+
+    termSocket.onopen = () => {
+      termInstance.focus();
+    };
+
+    termSocket.onmessage = (e) => {
+      termInstance.write(e.data);
+    };
+
+    termSocket.onerror = () => {
+      termInstance.write('\r\n\x1b[31mErreur de connexion WebSocket\x1b[0m\r\n');
+    };
+
+    termSocket.onclose = () => {
+      termInstance.write('\r\n\x1b[33mConnexion terminée\x1b[0m\r\n');
+    };
+
+    termInstance.onData((data) => {
+      if (termSocket && termSocket.readyState === WebSocket.OPEN) {
+        termSocket.send(data);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (termFit) termFit.fit();
+    });
+  }
+
+  function closeTerminal() {
+    if (termSocket) {
+      termSocket.close();
+      termSocket = null;
+    }
+    if (termInstance) {
+      termInstance.dispose();
+      termInstance = null;
+    }
+    termFit = null;
+    document.getElementById('terminal-modal').classList.add('hidden');
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
@@ -1208,6 +1317,17 @@
     animateBars();
     loadIntegration();
   });
+
+  // ── Bootstrap diagnostic ─────────────────────────────────────────────────────
+  try {
+    showPage('dashboard');
+    console.log('NetAudit JS chargé avec succès');
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div id="js-status" style="position:fixed;bottom:8px;right:8px;z-index:9999;background:var(--bg);color:var(--acid);border:1px solid var(--acid);border-radius:4px;padding:4px 10px;font:11px monospace">✓ JS OK</div>');
+  } catch(e) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div id="js-status" style="position:fixed;bottom:8px;right:8px;z-index:9999;background:#300;color:#f44;border:1px solid #f44;border-radius:4px;padding:4px 10px;font:11px monospace">✗ JS ERROR: ' + e.message + '</div>');
+  }
 </script>
 </body>
 </html>
