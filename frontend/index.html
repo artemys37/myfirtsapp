@@ -17,6 +17,7 @@
       --red: #ff3b5c;
       --orange: #ff7b00;
       --yellow: #ffd600;
+      --cyan: #7dcfff;
       --bg: #080c10;
       --surface: #0d1117;
       --border: #1e2d3d;
@@ -85,6 +86,10 @@
     .badge-medium   { background: #ffd60033; color: #ffd600; border: 1px solid #ffd60055; }
     .badge-low      { background: #00ff9d22; color: #00ff9d; border: 1px solid #00ff9d44; }
     .badge-info     { background: #1e2d3d;   color: #8b949e; border: 1px solid #30363d; }
+
+    /* CVE links */
+    a.cve-link { color: var(--cyan); text-decoration: none; transition: color .2s, text-shadow .2s; }
+    a.cve-link:hover { color: #7dcfff; text-shadow: 0 0 12px #7dcfff66; text-decoration: underline; }
 
     /* Table rows */
     .trow { border-bottom: 1px solid var(--border); transition: background .15s; }
@@ -238,28 +243,28 @@
         <h2 class="text-sm font-bold tracking-widest uppercase mono text-[var(--muted)] mb-4">Répartition Criticité</h2>
         <div class="space-y-3" id="severity-bars">
           <div class="flex items-center gap-3">
-            <span class="text-[var(--red)] mono text-xs w-16">CRITICAL</span>
+            <span class="text-[var(--red)] mono text-xs w-16">CRITIQUE</span>
             <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
               <div class="h-full bg-[var(--red)] bar-fill rounded-full" style="width:0%" data-target="30"></div>
             </div>
             <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-critical">0</span>
           </div>
           <div class="flex items-center gap-3">
-            <span class="text-[var(--orange)] mono text-xs w-16">HIGH</span>
+            <span class="text-[var(--orange)] mono text-xs w-16">ÉLEVÉ</span>
             <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
               <div class="h-full bg-[var(--orange)] bar-fill rounded-full" style="width:0%" data-target="55"></div>
             </div>
             <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-high">0</span>
           </div>
           <div class="flex items-center gap-3">
-            <span class="text-[var(--yellow)] mono text-xs w-16">MEDIUM</span>
+            <span class="text-[var(--yellow)] mono text-xs w-16">MOYEN</span>
             <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
               <div class="h-full bg-[var(--yellow)] bar-fill rounded-full" style="width:0%" data-target="70"></div>
             </div>
             <span class="mono text-xs text-[var(--muted)] w-6 text-right" id="sev-medium">0</span>
           </div>
           <div class="flex items-center gap-3">
-            <span class="text-[var(--acid)] mono text-xs w-16">LOW</span>
+            <span class="text-[var(--acid)] mono text-xs w-16">FAIBLE</span>
             <div class="flex-1 h-2 bg-[var(--border)] rounded-full overflow-hidden">
               <div class="h-full bg-[var(--acid)] bar-fill rounded-full" style="width:0%" data-target="85"></div>
             </div>
@@ -391,10 +396,11 @@
         <input id="vulns-scan-filter" type="text" placeholder="Scan ID..." class="input-field rounded px-3 py-2 text-xs w-48" />
         <select id="vulns-sev-filter" class="input-field rounded px-3 py-2 text-xs">
           <option value="">Toutes sévérités</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          <option value="critical">CRITIQUE</option>
+          <option value="high">ÉLEVÉ</option>
+          <option value="medium">MOYEN</option>
+          <option value="low">FAIBLE</option>
+          <option value="info">INFO</option>
         </select>
         <button onclick="loadVulns()" class="btn-primary rounded px-4 py-2 text-xs tracking-wide uppercase">ANALYSER</button>
       </div>
@@ -797,8 +803,12 @@
   }
 
   // ── Severity badge ──────────────────────────────────────────────────────────
+  const SEV_LABELS = {
+    critical: 'CRITIQUE', high: 'ÉLEVÉ', medium: 'MOYEN', low: 'FAIBLE', info: 'INFO'
+  };
   function sevBadge(sev) {
-    return `<span class="badge-${sev || 'info'} mono text-xs px-2 py-0.5 rounded uppercase">${sev || 'info'}</span>`;
+    const label = SEV_LABELS[sev] || sev || 'INFO';
+    return `<span class="badge-${sev || 'info'} mono text-xs px-2 py-0.5 rounded uppercase">${label}</span>`;
   }
 
   // ── Status badge ────────────────────────────────────────────────────────────
@@ -1039,7 +1049,7 @@
               <tr class="trow">
                 <td class="px-4 py-3 mono text-xs text-[var(--acid)]">${v.host_ip}</td>
                 <td class="px-4 py-3 mono text-xs">${v.port || ''}${v.service ? '/' + v.service : ''}</td>
-                <td class="px-4 py-3 mono text-xs font-bold">${cve.cve_id}</td>
+                <td class="px-4 py-3 mono text-xs font-bold"><a href="https://nvd.nist.gov/vuln/detail/${cve.cve_id}" target="_blank" class="cve-link">${cve.cve_id} ↗</a></td>
                 <td class="px-4 py-3 mono text-xs">${cve.cvss_score ?? '—'}</td>
                 <td class="px-4 py-3">${sevBadge(cve.severity)}</td>
                 <td class="px-4 py-3 text-xs text-[var(--muted)] max-w-xs truncate">${cve.description?.slice(0,80) || '—'}...</td>
@@ -1172,18 +1182,28 @@
         host_ip: ip, port, service, credentials,
         max_attempts: maxAttempts, delay_seconds: delay, scan_id: scanId
       });
-      resultsEl.innerHTML = data.results.map(r => `
-        <div class="log-entry ${r.success ? 'success' : 'error'} py-2">
+      let rows = '';
+      let autoOpened = false;
+      data.results.forEach(r => {
+        const btnOpen = r.success
+          ? `<button class="btn-ghost rounded px-2 py-0.5 text-xs mono ml-auto text-[var(--acid)] hover:bg-[var(--acid-dim)]" onclick="openTerminal('${encodeURIComponent(r.host_ip)}',${r.port},'${encodeURIComponent(r.username)}','${encodeURIComponent(r.password)}','${encodeURIComponent(r.service)}')">⟐ CONNECTER</button>`
+          : '';
+        rows += `<div class="log-entry ${r.success ? 'success' : 'error'} py-2">
           <div class="flex items-center gap-3">
             <span class="mono text-xs" style="color:${r.success ? 'var(--acid)' : 'var(--red)'}">
               ${r.success ? '✓ SUCCÈS' : '✗ ÉCHEC'}
             </span>
             <span class="mono text-xs text-[var(--text)]">${r.username}:${r.password}</span>
             <span class="mono text-xs text-[var(--muted)]">${r.service}:${r.port}</span>
-            ${r.success ? `<button class="btn-ghost rounded px-2 py-0.5 text-xs mono ml-auto text-[var(--acid)] hover:bg-[var(--acid-dim)]" onclick="openTerminal('${r.host_ip}',${r.port},'${r.username.replace(/'/g,"\\'")}','${r.password.replace(/'/g,"\\'")}','${r.service}')">⟐ CONNECTER</button>` : ''}
+            ${btnOpen}
           </div>
-        </div>
-      `).join('') || '<div class="mono text-xs text-[var(--muted)]">Aucun résultat.</div>';
+        </div>`;
+        if (r.success && !autoOpened) {
+          autoOpened = true;
+          setTimeout(() => openTerminal(encodeURIComponent(r.host_ip), r.port, encodeURIComponent(r.username), encodeURIComponent(r.password), encodeURIComponent(r.service)), 500);
+        }
+      });
+      resultsEl.innerHTML = rows || '<div class="mono text-xs text-[var(--muted)]">Aucun résultat.</div>';
       addLog(`Auth test terminé: ${data.tested} tentative(s)`, data.results.some(r=>r.success) ? 'warn' : 'success');
     } catch(e) {
       resultsEl.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
@@ -1319,6 +1339,10 @@
   let termFit = null;
 
   function openTerminal(host, port, username, password, service) {
+    host = decodeURIComponent(host);
+    username = decodeURIComponent(username);
+    password = decodeURIComponent(password);
+    service = decodeURIComponent(service);
     const title = document.getElementById('terminal-title');
     title.textContent = `${service.toUpperCase()} — ${username}@${host}:${port}`;
     document.getElementById('terminal-modal').classList.remove('hidden');
