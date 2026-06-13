@@ -1,12 +1,15 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 import json, os, smtplib, threading, logging
 
 logger = logging.getLogger("uvicorn")
 
 from .db import connect_db, close_db
-from .routers import scan, vulns, auth_test, reports, integration, sqli, auth, terminal, wifi, tools
+from .routers import scan, vulns, auth_test, reports, integration, sqli, auth, terminal, wifi, tools, lanscan
 
 TUNNEL_URL_FILE = "/tunnel/url.json"
 SENT_URLS_FILE = "/tmp/.sent_urls.json"
@@ -88,7 +91,18 @@ app = FastAPI(
     description="Network discovery & security audit platform",
     version="1.0.0",
     lifespan=lifespan,
+    default_response_class=JSONResponse,
 )
+
+@app.exception_handler(StarletteHTTPException)
+@app.exception_handler(RequestValidationError)
+async def json_error_handler(request: Request, exc):
+    status = getattr(exc, "status_code", 500)
+    detail = getattr(exc, "detail", None) or str(exc) or "Internal Server Error"
+    if isinstance(exc, RequestValidationError):
+        status = 422
+        detail = exc.errors()
+    return JSONResponse(status_code=status, content={"detail": detail})
 
 app.add_middleware(
     CORSMiddleware,
@@ -108,6 +122,7 @@ app.include_router(sqli.router,        prefix="/api/sqli",       tags=["SQL Inje
 app.include_router(terminal.router,    prefix="/api/terminal",  tags=["Terminal"])
 app.include_router(wifi.router,        prefix="/api/wifi",      tags=["WiFi"])
 app.include_router(tools.router,       prefix="/api/tools",     tags=["Tools"])
+app.include_router(lanscan.router,     prefix="/api/lanscan",   tags=["LAN Scan"])
 
 @app.get("/health")
 async def health():

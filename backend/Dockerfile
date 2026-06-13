@@ -39,6 +39,11 @@ RUN curl -fsSL "https://github.com/zacheller/rockyou/raw/master/rockyou.txt.tar.
     mv /tmp/rockyou.txt /opt/rockyou.txt && \
     rm /tmp/rockyou.txt.tar.gz
 
+# Burp Suite Community (headless)
+RUN curl -fsSL -o /opt/burpsuite.jar "https://portswigger-cdn.net/burp/releases/download?product=community&type=jar" || \
+    curl -fsSL -o /opt/burpsuite.jar "https://portswigger.net/burp/releases/community/latest" 2>/dev/null; \
+    chmod 644 /opt/burpsuite.jar 2>/dev/null; echo "Burp Suite JAR: $(ls -lh /opt/burpsuite.jar 2>/dev/null | awk '{print $5}')"
+
 # ── Runtime stage ──────────────────────────────────────────────────────────────
 FROM python:3.12-slim
 
@@ -47,9 +52,11 @@ WORKDIR /app
 COPY --from=builder /install /usr/local
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl sqlmap nmap dirb p7zip-full dnsutils perl \
+    ca-certificates curl nmap dirb p7zip-full dnsutils perl \
     libjson-perl libxml-writer-perl \
-    aircrack-ng tshark wifite && \
+    aircrack-ng tshark wifite \
+    iputils-ping arp-scan \
+    openjdk-21-jre-headless && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=tools /usr/local/bin/gobuster /usr/local/bin/gobuster
@@ -66,6 +73,12 @@ RUN useradd -m -u 1000 appuser && \
     chown -R appuser /app && \
     mkdir -p /tunnel && chown appuser:appuser /tunnel
 USER appuser
+
+RUN pip install --user --no-cache-dir sqlmap && \
+    mkdir -p /home/appuser/.local/bin && \
+    ln -sf /home/appuser/.local/lib/python3.12/site-packages/sqlmap/sqlmap.py /home/appuser/.local/bin/sqlmap
+
+ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 COPY --chown=appuser . .
 

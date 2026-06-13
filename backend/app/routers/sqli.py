@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from bson import ObjectId
 from datetime import datetime, timezone
-import asyncio, json, os, re
+from pydantic import BaseModel
+from typing import Optional
+import asyncio, csv, io, json, os, re
 from pathlib import Path
 
 from ..db import get_db
@@ -173,6 +175,103 @@ def parse_sqlmap_output(output: str, url: str, scan_id: str) -> list[SQLiFinding
             ))
 
     return findings
+
+class SQLiExploit(BaseModel):
+    action: str
+    db: Optional[str] = None
+    table: Optional[str] = None
+    columns: Optional[str] = None
+
+async def run_sqlmap_exploit(url: str, data: Optional[str], cookie: Optional[str], exploit_cmd: list[str]) -> str:
+    cmd = ["sqlmap", "-u", url, "--batch", "--random-agent", "--flush-session"]
+    if data:
+        cmd.extend(["--data", data])
+    if cookie:
+        cmd.extend(["--cookie", cookie])
+    cmd.extend(exploit_cmd)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout_data, stderr_data = [], []
+        async def read_stream(stream, dest):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                dest.append(line.decode("utf-8", errors="replace"))
+        await asyncio.wait_for(
+            asyncio.gather(read_stream(proc.stdout, stdout_data), read_stream(proc.stderr, stderr_data)),
+            timeout=180,
+        )
+        return ("".join(stdout_data) + "".join(stderr_data))[-15000:]
+    except asyncio.TimeoutError:
+        return "Timeout après 180s"
+    except Exception as e:
+        return f"Erreur: {str(e)}"
+
+@router.post("/{sqli_id}/exploit", summary="Post-exploitation: enumerate databases/tables/dump")
+async def sqli_exploit(sqli_id: str, exploit: SQLiExploit):
+    db = get_db()
+    scan = await db.sqli_scans.find_one({"_id": ObjectId(sqli_id)})
+    if not scan:
+        raise HTTPException(404, "Scan SQLi introuvable")
+
+    url = scan["url"]
+    data = scan.get("data")
+    cookie = scan.get("cookie")
+
+    if exploit.action == "dbs":
+        output = await run_sqlmap_exploit(url, data, cookie, ["--dbs"])
+    elif exploit.action == "tables":
+        if not exploit.db:
+            raise HTTPException(400, "Nom de base requis (db)")
+        output = await run_sqlmap_exploit(url, data, cookie, ["-D", exploit.db, "--tables"])
+    elif exploit.action == "columns":
+        if not exploit.db or not exploit.table:
+            raise HTTPException(400, "db et table requis")
+        output = await run_sqlmap_exploit(url, data, cookie, ["-D", exploit.db, "-T", exploit.table, "--columns"])
+    elif exploit.action == "dump":
+        if not exploit.db or not exploit.table:
+            raise HTTPException(400, "db et table requis")
+        cmd = ["-D", exploit.db, "-T", exploit.table]
+        if exploit.columns:
+            cmd.extend(["-C", exploit.columns])
+        cmd.append("--dump")
+        output = await run_sqlmap_exploit(url, data, cookie, cmd)
+    else:
+        raise HTTPException(400, "Action invalide. Utilisez: dbs, tables, columns, dump")
+
+    csv_data = None
+    if exploit.action == "dump":
+        csv_data = parse_sqlmap_csv(sqli_id, exploit.db, exploit.table)
+
+    return {"action": exploit.action, "output": output, "csv": csv_data}
+
+def parse_sqlmap_csv(sqli_id: str, db: str, table: str) -> Optional[dict]:
+    dump_dir = Path(SQLMAP_OUTPUT_DIR) / sqli_id
+    for csv_path in dump_dir.rglob(f"{table}.csv"):
+        try:
+            rows = []
+            with open(csv_path, newline="", encoding="utf-8", errors="replace") as f:
+                reader = csv.reader(f)
+                headers = next(reader, [])
+                for row in reader:
+                    rows.append(row)
+            return {"headers": headers, "rows": rows[:200], "total": len(rows), "file": str(csv_path)}
+        except Exception as e:
+            return {"error": str(e)}
+    return None
+
+@router.get("/{sqli_id}/csv", summary="Récupérer les données CSV d'un dump sqlmap")
+async def get_sqli_csv(sqli_id: str, db: str, table: str):
+    data = parse_sqlmap_csv(sqli_id, db, table)
+    if not data:
+        raise HTTPException(404, "Aucun fichier CSV trouvé pour cette table")
+    return data
 
 @router.post("/run", summary="Lancer un test SQLi avec sqlmap")
 async def start_sqli(config: SQLiConfig, background_tasks: BackgroundTasks):

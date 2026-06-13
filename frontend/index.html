@@ -197,6 +197,7 @@
       <span class="nav-item px-1 py-3" data-page="sqli" onclick="showPage('sqli')">SQLi</span>
       <span class="nav-item px-1 py-3" data-page="auth" onclick="showPage('auth')">Auth Tests</span>
       <span class="nav-item px-1 py-3" data-page="wifi" onclick="showPage('wifi')">WiFi</span>
+      <span class="nav-item px-1 py-3" data-page="lanscan" onclick="showPage('lanscan')">LAN</span>
       <span class="nav-item px-1 py-3" data-page="reports" onclick="showPage('reports')">Rapports</span>
       <span class="nav-item px-1 py-3" data-page="tools" onclick="showPage('tools')">Outils</span>
       <span class="nav-item px-1 py-3" data-page="integration" onclick="showPage('integration')">Intégration</span>
@@ -523,6 +524,36 @@
         <div id="sqli-results" class="space-y-2 max-h-96 overflow-y-auto">
           <div class="text-[var(--muted)] mono text-xs">En attente du scan...</div>
         </div>
+        <!-- Post-exploitation actions -->
+        <div id="sqli-actions" class="hidden mt-4 pt-4 border-t border-[var(--border)]">
+          <h3 class="mono text-[var(--cyan)] text-xs tracking-widest uppercase mb-3">Post-exploitation</h3>
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button id="sqli-sqli-id-store" data-id="" class="hidden"></button>
+            <button onclick="sqliPromptTable('dbs')" class="btn-ghost rounded px-3 py-1.5 text-xs mono">📋 Databases</button>
+            <button onclick="sqliPromptTable('tables')" class="btn-ghost rounded px-3 py-1.5 text-xs mono">🗂️ Tables</button>
+            <button onclick="sqliPromptTable('columns')" class="btn-ghost rounded px-3 py-1.5 text-xs mono">📑 Columns</button>
+            <button onclick="sqliPromptTable('dump')" class="btn-ghost rounded px-3 py-1.5 text-xs mono">💾 Dump</button>
+          </div>
+          <div class="hidden" id="sqli-db-prompt">
+            <div class="flex gap-2 items-end">
+              <div class="flex-1">
+                <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Database</label>
+                <input id="sqli-db-input" type="text" placeholder="nom_de_la_base" class="input-field w-full rounded px-3 py-1.5 text-xs" />
+              </div>
+              <div class="flex-1 hidden" id="sqli-table-group">
+                <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Table</label>
+                <input id="sqli-table-input" type="text" placeholder="nom_table" class="input-field w-full rounded px-3 py-1.5 text-xs" />
+              </div>
+              <div class="flex-1 hidden" id="sqli-cols-group">
+                <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Colonnes (optionnel)</label>
+                <input id="sqli-cols-input" type="text" placeholder="col1,col2" class="input-field w-full rounded px-3 py-1.5 text-xs" />
+              </div>
+              <button id="sqli-exec-btn" onclick="sqliExecExploit()" class="btn-primary rounded px-4 py-1.5 text-xs whitespace-nowrap">▶ EXEC</button>
+            </div>
+          </div>
+        </div>
+        <!-- Exploit output -->
+        <div id="sqli-exploit-output" class="hidden mt-3 bg-[#050810] rounded p-3 mono text-xs max-h-64 overflow-y-auto"></div>
       </div>
     </div>
   </div>
@@ -596,8 +627,42 @@
         </div>
       </div>
     </div>
-  </div>
 
+    <!-- Quick connect panel -->
+    <div class="stat-card rounded-lg p-6">
+      <h2 class="mono text-[var(--cyan)] text-sm tracking-widest uppercase mb-4">// Connexion rapide</h2>
+      <p class="mono text-xs text-[var(--muted)] mb-4">Connectez-vous manuellement à une machine cible avec les identifiants trouvés.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+        <div>
+          <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">IP Hôte</label>
+          <input id="qc-ip" type="text" placeholder="192.168.1.1" class="input-field w-full rounded px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Port</label>
+          <input id="qc-port" type="number" value="22" class="input-field w-full rounded px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Utilisateur</label>
+          <input id="qc-user" type="text" placeholder="root" class="input-field w-full rounded px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Mot de passe</label>
+          <input id="qc-pass" type="password" placeholder="••••••••" class="input-field w-full rounded px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="mono text-xs text-[var(--muted)] uppercase tracking-widest block mb-1">Service</label>
+          <select id="qc-service" class="input-field w-full rounded px-3 py-2.5 text-sm">
+            <option value="ssh">SSH</option>
+            <option value="telnet">Telnet</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="quickConnect()" class="btn-primary rounded py-2.5 px-6 text-sm tracking-widest uppercase">
+        ⟐ CONNECTER
+      </button>
+    </div>
+  </div>
+ 
   <!-- ── TERMINAL MODAL ── -->
   <div id="terminal-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
     <div class="stat-card rounded-xl overflow-hidden w-[90vw] h-[85vh] flex flex-col">
@@ -619,39 +684,171 @@
       <p class="text-[var(--muted)] mono text-sm mt-1">// Détection des réseaux et extraction des mots de passe sauvegardés</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-      <div class="stat-card rounded-lg p-6 text-center">
-        <div class="text-3xl font-bold mono text-[var(--acid)]" id="wifi-stat-networks">—</div>
-        <div class="mono text-xs text-[var(--muted)] mt-1">Réseaux détectés</div>
-      </div>
-      <div class="stat-card rounded-lg p-6 text-center">
-        <div class="text-3xl font-bold mono text-[var(--yellow)]" id="wifi-stat-saved">—</div>
-        <div class="mono text-xs text-[var(--muted)] mt-1">Mots de passe sauvegardés</div>
-      </div>
-      <div class="stat-card rounded-lg p-6 text-center">
-        <div id="wifi-stat-hw" class="text-lg font-bold mono text-[var(--red)]">Indisponible</div>
-        <div class="mono text-xs text-[var(--muted)] mt-1">Interface WiFi</div>
+    <!-- Infos connexion client (navigateur) -->
+    <div id="wifi-client-info" class="stat-card rounded-lg p-4 mb-6 hidden">
+      <div class="flex items-center gap-3">
+        <span class="text-[var(--cyan)] text-lg">📱</span>
+        <div class="flex-1">
+          <div class="mono text-xs text-[var(--cyan)] uppercase tracking-widest">Connexion client (navigateur)</div>
+          <div class="mono text-sm mt-1" id="wifi-client-detail">—</div>
+        </div>
+        <div class="mono text-xs text-[var(--muted)]" id="wifi-client-type">—</div>
       </div>
     </div>
 
-    <div class="flex items-center gap-3 mb-6">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8">
+      <div class="stat-card rounded-lg p-4 text-center">
+        <div class="text-2xl font-bold mono text-[var(--acid)]" id="wifi-stat-networks">—</div>
+        <div class="mono text-[10px] text-[var(--muted)] mt-1">Réseaux détectés (serveur)</div>
+      </div>
+      <div class="stat-card rounded-lg p-4 text-center">
+        <div class="text-2xl font-bold mono text-[var(--yellow)]" id="wifi-stat-saved">—</div>
+        <div class="mono text-[10px] text-[var(--muted)] mt-1">Mots de passe (serveur)</div>
+      </div>
+      <div class="stat-card rounded-lg p-4 text-center">
+        <div id="wifi-stat-hw" class="text-sm font-bold mono text-[var(--red)]">Indisponible</div>
+        <div class="mono text-[10px] text-[var(--muted)] mt-1">Interface WiFi (serveur)</div>
+      </div>
+      <div class="stat-card rounded-lg p-4 text-center">
+        <div id="wifi-client-iface" class="text-sm font-bold mono text-[var(--muted)]">—</div>
+        <div class="mono text-[10px] text-[var(--muted)] mt-1">Carte réseau (client)</div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3 mb-6 flex-wrap">
       <button onclick="wifiScan()" class="btn-primary rounded px-5 py-2.5 text-sm tracking-wide uppercase flex items-center gap-2">
-        <span>📡</span> SCANNER LES RÉSEAUX
+        <span>📡</span> SCANNER (SERVEUR)
       </button>
       <button onclick="wifiSaved()" class="btn-ghost rounded px-5 py-2.5 text-sm tracking-wide uppercase flex items-center gap-2">
-        🔑 MOTS DE PASSE SAUVEGARDÉS
+        🔑 MOTS DE PASSE SAUVEGARDÉS (SERVEUR)
       </button>
       <button onclick="wifiStatus()" class="btn-ghost rounded px-4 py-2.5 text-xs mono">⟳ STATUT</button>
+      <button onclick="clientWifiInfo()" class="btn-ghost rounded px-4 py-2.5 text-xs mono flex items-center gap-1">
+        📱 CONNEXION CLIENT
+      </button>
       <span id="wifi-status-msg" class="mono text-xs text-[var(--muted)]"></span>
     </div>
 
     <div id="wifi-networks" class="space-y-2 max-h-[600px] overflow-y-auto">
-      <div class="text-[var(--muted)] mono text-sm">Appuyez sur "Scanner les réseaux" pour lancer la détection.</div>
+      <div class="text-[var(--muted)] mono text-sm">Appuyez sur "Scanner (serveur)" pour lancer la détection WiFi depuis le serveur Debian.</div>
     </div>
 
     <div id="wifi-saved-section" class="mt-8 hidden">
-      <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Mots de passe sauvegardés</h2>
+      <h2 class="mono text-[var(--acid)] text-sm tracking-widest uppercase mb-4">// Mots de passe sauvegardés (serveur)</h2>
       <div id="wifi-saved-list" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- ── LAN SCAN ── -->
+  <div id="page-lanscan" class="page fade-up">
+    <div class="mb-8">
+      <h1 class="text-4xl font-bold tracking-tight">SCAN RÉSEAU LOCAL</h1>
+      <p class="text-[var(--muted)] mono text-sm mt-1">// Découverte des appareils connectés sur votre réseau local</p>
+    </div>
+
+    <!-- Infos client (navigateur) -->
+    <div id="lanscan-client-info" class="stat-card rounded-lg p-4 mb-6 hidden">
+      <div class="flex items-center gap-3">
+        <span class="text-[var(--cyan)] text-lg">🖥️</span>
+        <div class="flex-1">
+          <div class="mono text-xs text-[var(--cyan)] uppercase tracking-widest">Carte réseau client (navigateur)</div>
+          <div class="mono text-sm mt-1" id="lanscan-client-detail">—</div>
+        </div>
+        <div class="mono text-xs text-[var(--muted)]" id="lanscan-client-type">—</div>
+      </div>
+    </div>
+
+    <!-- ── Section scan client (navigateur) ── -->
+    <div class="stat-card rounded-lg p-5 mb-6 border-l-2" style="border-left-color:var(--cyan)">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="mono text-sm font-bold tracking-widest text-[var(--cyan)]">⬡ Scan côté client (navigateur)</h2>
+        <span class="mono text-[10px] text-[var(--muted)]">Appareil qui exécute l'application</span>
+      </div>
+      <div class="flex items-center gap-3 mb-3">
+        <button onclick="clientLanscanScan()" class="btn-primary rounded px-5 py-2 text-xs tracking-wide uppercase flex items-center gap-2">
+          <span>🌐</span> SCANNER (NAVIGATEUR)
+        </button>
+        <span id="client-lanscan-status" class="mono text-xs text-[var(--muted)]"></span>
+      </div>
+      <div id="client-lanscan-loading" class="hidden flex items-center gap-3 text-xs mono text-[var(--cyan)] mb-2">
+        <div class="spinner w-4 h-4 border-2 border-[var(--cyan)] border-t-transparent rounded-full"></div>
+        Scan HTTP en cours...
+      </div>
+      <div id="client-lanscan-table-wrapper" class="hidden overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--border)] text-left mono text-[10px] text-[var(--muted)] uppercase tracking-widest">
+              <th class="p-2 font-medium">IP</th>
+              <th class="p-2 font-medium">Ports ouverts</th>
+              <th class="p-2 font-medium">Serveur</th>
+              <th class="p-2 font-medium">Réponse</th>
+            </tr>
+          </thead>
+          <tbody id="client-lanscan-tbody"></tbody>
+        </table>
+      </div>
+      <div id="client-lanscan-empty" class="hidden text-center py-6 text-[var(--muted)] mono text-xs">
+        Aucun service HTTP détecté depuis ce navigateur.
+      </div>
+    </div>
+
+    <!-- ── Section scan serveur (Debian) ── -->
+    <div class="stat-card rounded-lg p-5 mb-6 border-l-2" style="border-left-color:var(--acid)">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="mono text-sm font-bold tracking-widest text-[var(--acid)]">⬡ Scan côté serveur (Debian)</h2>
+        <span class="mono text-[10px] text-[var(--muted)]">Carte réseau du serveur</span>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+        <div class="stat-card rounded-lg p-3 text-center">
+          <div class="text-2xl font-bold mono text-[var(--acid)]" id="lanscan-stat-count">—</div>
+          <div class="mono text-[10px] text-[var(--muted)] mt-1">Appareils détectés</div>
+        </div>
+        <div class="stat-card rounded-lg p-3 text-center">
+          <div class="text-sm font-bold mono text-[var(--cyan)]" id="lanscan-stat-net">—</div>
+          <div class="mono text-[10px] text-[var(--muted)] mt-1">Réseau</div>
+        </div>
+        <div class="stat-card rounded-lg p-3 text-center">
+          <div class="text-sm font-bold mono text-[var(--yellow)]" id="lanscan-stat-scanner">—</div>
+          <div class="mono text-[10px] text-[var(--muted)] mt-1">Scanner utilisé</div>
+        </div>
+        <div class="stat-card rounded-lg p-3 text-center">
+          <div class="text-sm font-bold mono" id="lanscan-stat-tools">—</div>
+          <div class="mono text-[10px] text-[var(--muted)] mt-1">Outils disponibles</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 mb-3">
+        <button onclick="lanscanScan()" class="btn-ghost rounded px-5 py-2 text-xs tracking-wide uppercase flex items-center gap-2">
+          <span>🖥️</span> SCANNER (SERVEUR)
+        </button>
+        <span id="lanscan-status-msg" class="mono text-xs text-[var(--muted)]"></span>
+      </div>
+
+      <div id="lanscan-loading" class="hidden flex items-center gap-3 text-xs mono text-[var(--acid)] mb-2">
+        <div class="spinner w-4 h-4 border-2 border-[var(--acid)] border-t-transparent rounded-full"></div>
+        Scan réseau en cours, veuillez patienter...
+      </div>
+
+      <div id="lanscan-table-wrapper" class="hidden overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--border)] text-left mono text-[10px] text-[var(--muted)] uppercase tracking-widest">
+              <th class="p-2 font-medium">IP</th>
+              <th class="p-2 font-medium">Adresse MAC</th>
+              <th class="p-2 font-medium">Constructeur</th>
+              <th class="p-2 font-medium">Hostname</th>
+              <th class="p-2 font-medium">Statut</th>
+              <th class="p-2 font-medium">Source</th>
+            </tr>
+          </thead>
+          <tbody id="lanscan-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="lanscan-empty" class="hidden text-center py-6 text-[var(--muted)] mono text-xs">
+        Aucun appareil détecté. Assurez-vous d'être sur le même réseau.
+      </div>
     </div>
   </div>
 
@@ -849,6 +1046,8 @@
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     document.querySelector(`[data-page="${name}"]`).classList.add('active');
+    if (name === 'lanscan') showClientNetworkInfo();
+    if (name === 'wifi') clientWifiInfo();
   }
 
   // ── Log helper ──────────────────────────────────────────────────────────────
@@ -1211,6 +1410,7 @@
           if (findings.length === 0) {
             resultsEl.innerHTML = '<div class="mono text-xs text-[var(--muted)]">Aucune injection trouvée.</div>';
           } else {
+            document.getElementById('sqli-sqli-id-store').dataset.id = sqliId;
             resultsEl.innerHTML = findings.map(function(f) {
               return `<div class="log-entry success py-3">
                 <div class="flex items-center gap-2 mb-1">
@@ -1222,6 +1422,7 @@
                 ${f.dbms ? `<div class="mono text-xs text-[var(--muted)] ml-1 mt-1">DBMS: ${f.dbms}</div>` : ''}
               </div>`;
             }).join("");
+            document.getElementById('sqli-actions').classList.remove('hidden');
           }
           addLog(findings.length + " injection(s) trouvée(s)", findings.length > 0 ? "warn" : "success");
         } else if (status.status === "failed") {
@@ -1230,6 +1431,98 @@
         }
       } catch(e) { clearInterval(interval); }
     }, 3000);
+  }
+
+  // ── SQLi Post-exploitation ──────────────────────────────────────────────────
+  let sqliPendingAction = '';
+
+  function sqliPromptTable(action) {
+    sqliPendingAction = action;
+    const prompt = document.getElementById('sqli-db-prompt');
+    const tableGroup = document.getElementById('sqli-table-group');
+    const colsGroup = document.getElementById('sqli-cols-group');
+    document.getElementById('sqli-db-input').value = '';
+    document.getElementById('sqli-table-input').value = '';
+    document.getElementById('sqli-cols-input').value = '';
+
+    if (action === 'dbs') {
+      prompt.classList.add('hidden');
+      sqliExecExploit();
+      return;
+    }
+    if (action === 'tables') {
+      tableGroup.classList.add('hidden');
+      colsGroup.classList.add('hidden');
+    } else if (action === 'columns') {
+      tableGroup.classList.remove('hidden');
+      colsGroup.classList.add('hidden');
+    } else if (action === 'dump') {
+      tableGroup.classList.remove('hidden');
+      colsGroup.classList.remove('hidden');
+    } else {
+      tableGroup.classList.add('hidden');
+      colsGroup.classList.add('hidden');
+    }
+    prompt.classList.remove('hidden');
+  }
+
+  async function sqliExecExploit() {
+    const sqliId = document.getElementById('sqli-sqli-id-store').dataset.id;
+    if (!sqliId) { addLog('Aucun scan SQLi disponible', 'error'); return; }
+
+    const body = { action: sqliPendingAction };
+    if (sqliPendingAction === 'tables' || sqliPendingAction === 'columns' || sqliPendingAction === 'dump') {
+      body.db = document.getElementById('sqli-db-input').value.trim();
+      if (!body.db) { addLog('Nom de la base requis', 'warn'); return; }
+    }
+    if (sqliPendingAction === 'columns' || sqliPendingAction === 'dump') {
+      body.table = document.getElementById('sqli-table-input').value.trim();
+      if (!body.table) { addLog('Nom de la table requis', 'warn'); return; }
+    }
+    if (sqliPendingAction === 'dump') {
+      body.columns = document.getElementById('sqli-cols-input').value.trim() || null;
+    }
+
+    const outputEl = document.getElementById('sqli-exploit-output');
+    outputEl.classList.remove('hidden');
+    outputEl.innerHTML = '<span class="text-[var(--yellow)]">Exécution sqlmap en cours...</span>';
+
+    try {
+      const result = await postJSON("/sqli/" + sqliId + "/exploit", body);
+      const out = result.output || 'Aucun résultat';
+      let html = out.split('\n').map(l => {
+        const c = l.includes('Database:') ? 'var(--acid)' :
+                 l.includes('Table:') ? 'var(--cyan)' :
+                 l.includes('+') ? 'var(--muted)' : '';
+        return c ? `<span style="color:${c}">${l}</span>` : `<span>${l}</span>`;
+      }).join('\n');
+
+      if (result.csv && result.csv.headers) {
+        html += '<div class="mt-4 pt-3 border-t border-[var(--border)]">';
+        html += '<span class="mono text-xs text-[var(--acid)] tracking-widest uppercase">📊 Données extraites (' + result.csv.total + ' lignes)</span>';
+        html += '<div class="overflow-x-auto mt-2 max-h-64 overflow-y-auto">';
+        html += '<table class="w-full text-xs mono border-collapse">';
+        html += '<thead><tr class="bg-[var(--surface)]">';
+        result.csv.headers.forEach(h => {
+          html += '<th class="text-[var(--acid)] text-left px-2 py-1 border border-[var(--border)] whitespace-nowrap">' + h + '</th>';
+        });
+        html += '</tr></thead><tbody>';
+        result.csv.rows.forEach(row => {
+          html += '<tr class="hover:bg-[var(--surface)]">';
+          row.forEach(cell => {
+            html += '<td class="px-2 py-1 border border-[var(--border)] text-[var(--text)] max-w-[200px] truncate">' + (cell || '') + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+      }
+
+      outputEl.innerHTML = html;
+      addLog(`SQLi ${body.action} terminé${result.csv ? ' — ' + result.csv.total + ' lignes extraites' : ''}`, 'success');
+    } catch(e) {
+      outputEl.innerHTML = `<span class="text-[var(--red)]">Erreur: ${e.message}</span>`;
+      addLog('Erreur exploitation SQLi: ' + e.message, 'error');
+    }
   }
 
   // ── Auth Test ─────────────────────────────────────────────────────────────────
@@ -1291,6 +1584,28 @@
     } catch(e) {
       resultsEl.innerHTML = `<div class="mono text-xs text-[var(--red)]">Erreur: ${e.message}</div>`;
     }
+  }
+
+  function quickConnect() {
+    const ip = document.getElementById('qc-ip').value.trim();
+    const port = parseInt(document.getElementById('qc-port').value);
+    const user = document.getElementById('qc-user').value.trim();
+    const pass = document.getElementById('qc-pass').value.trim();
+    const service = document.getElementById('qc-service').value;
+
+    if (!ip || !port || !user) {
+      addLog('IP, port et utilisateur requis', 'warn');
+      return;
+    }
+
+    openTerminal(
+      encodeURIComponent(ip),
+      port,
+      encodeURIComponent(user),
+      encodeURIComponent(pass),
+      encodeURIComponent(service)
+    );
+    addLog(`Connexion ${service.toUpperCase()} vers ${user}@${ip}:${port}`, 'info');
   }
 
   // ── Reports ───────────────────────────────────────────────────────────────────
@@ -1623,6 +1938,7 @@
     { id: 'hashcat', name: 'Hashcat', cat: 'auth', desc: 'Craqueur de hashs accéléré GPU. Dictionnaire, brute-force, masque.', icon: '🔥' },
     { id: 'aircrack', name: 'Aircrack-ng', cat: 'wifi', desc: 'Suite de craquage WiFi. Capture, dé-auth, craquage WEP/WPA.', icon: '📶' },
     { id: 'kismet', name: 'Kismet', cat: 'wifi', desc: 'Détecteur de réseaux sans-fil, sniffer et IDS. WiFi, Bluetooth, SDR.', icon: '📻' },
+    { id: 'ping', name: 'Ping', cat: 'network', desc: 'Test de connectivité réseau. ICMP ping + TCP connect sur les ports courants.', icon: '📶' },
     { id: 'zip', name: '7-Zip', cat: 'archives', desc: 'Gestionnaire d\'archives. Extraction et test de mots de passe ZIP, RAR, 7z.', icon: '🗜️' },
   ];
 
@@ -1681,7 +1997,7 @@
         { id: 'hashcat-wordlist', label: 'Wordlist', type: 'text', placeholder: '/usr/share/dirb/wordlists/common.txt', val: '' },
       ],
       endpoint: '/api/tools/hashcat/run',
-      body: (f) => ({ hash: f['hashcat-hash'], hash_type: f['hashcat-format'], wordlist: f['hashcat-wordlist'] }),
+      body: (f) => ({ hash: f['john-hash'], hash_type: f['john-format'] || f['hashcat-format'], wordlist: f['john-wordlist'] || f['hashcat-wordlist'] }),
     },
     zip: {
       title: '🗜️ 7-Zip — Test d\'archive protégée',
@@ -1699,6 +2015,50 @@
       ],
       endpoint: '/api/tools/dirb/run',
       body: (f) => ({ url: f['dirb-url'] }),
+    },
+    dirbuster: {
+      title: '📂 DirBuster — Scan de répertoires (interface DirBuster)',
+      fields: [
+        { id: 'dirbuster-url', label: 'URL cible', type: 'text', placeholder: 'http://192.168.1.1', val: '' },
+      ],
+      endpoint: '/api/tools/dirb/run',
+      body: (f) => ({ url: f['dirbuster-url'] }),
+    },
+    wireshark: {
+      title: '📡 Wireshark/TShark — Capture réseau',
+      fields: [
+        { id: 'ws-interface', label: 'Interface (vide = auto)', type: 'text', placeholder: 'eth0', val: '' },
+        { id: 'ws-count', label: 'Nombre de paquets', type: 'number', placeholder: '50', val: '50' },
+        { id: 'ws-filter', label: 'Filtre BPF (optionnel)', type: 'text', placeholder: 'tcp port 80', val: '' },
+      ],
+      endpoint: '/api/tools/wireshark/run',
+      body: (f) => ({ interface: f['ws-interface'], count: parseInt(f['ws-count']) || 50, filter_expr: f['ws-filter'] }),
+    },
+    burpsuite: {
+      title: '🕷️ Burp Suite — Scan headless',
+      fields: [
+        { id: 'burp-target', label: 'URL cible', type: 'text', placeholder: 'http://192.168.1.1', val: '' },
+        { id: 'burp-scan-type', label: 'Type de scan', type: 'text', placeholder: 'crawl, scan, or both', val: 'both' },
+      ],
+      endpoint: '/api/tools/burp/run',
+      body: (f) => ({ target: f['burp-target'], scan_type: f['burp-scan-type'] || 'both' }),
+    },
+    nessus: {
+      title: '🛡️ Nessus — Scan de vulnérabilités',
+      fields: [
+        { id: 'nessus-action', label: 'Action', type: 'text', placeholder: 'status, scan, or list', val: 'status' },
+      ],
+      endpoint: '/api/tools/nessus/run',
+      body: () => ({}),
+    },
+    ping: {
+      title: '📶 Ping — Test de connectivité',
+      fields: [
+        { id: 'ping-target', label: 'Cible (IP ou nom d\'hôte)', type: 'text', placeholder: '192.168.1.1 ou google.com', val: '' },
+        { id: 'ping-count', label: 'Nombre d\'essais', type: 'number', placeholder: '4', val: '4' },
+      ],
+      endpoint: '/api/tools/ping/run',
+      body: (f) => ({ target: f['ping-target'], count: parseInt(f['ping-count']) || 4 }),
     },
   };
 
@@ -1837,15 +2197,271 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      const ct = resp.headers.get('content-type') || '';
+      if (!ct.includes('application/json') && !ct.includes('text/json')) {
+        const text = await resp.text();
+        const snippet = text.length > 200 ? text.slice(0, 200) + '...' : text;
+        throw new Error(`Réponse non-JSON (HTTP ${resp.status}, ${ct || 'inconnu'}) : ${snippet}`);
+      }
       const data = await resp.json();
-      if (!resp.ok) throw new Error(data.detail || 'Erreur');
+      if (!resp.ok) throw new Error(data.detail || `HTTP ${resp.status}`);
       const out = data.output || JSON.stringify(data, null, 2);
       const lines = out.split('\n');
-      outputEl.innerHTML = lines.map(l => `<span>${l}</span>`).join('\n');
+      outputEl.innerHTML = lines.map(l => {
+        const c = l.includes('✓') ? 'var(--acid)' : l.includes('✗') ? 'var(--red)' : l.includes('⚠') ? 'var(--orange)' : l.includes('▶') ? 'var(--cyan)' : '';
+        return c ? `<span style="color:${c}">${l}</span>` : $escapeHtml(l);
+      }).join('\n');
       addLog(`Outil ${id} terminé (code ${data.exit_code})`, data.exit_code === 0 ? 'success' : 'warn');
     } catch(e) {
       outputEl.innerHTML = `<span class="text-[var(--red)]">Erreur: ${e.message}</span>`;
       addLog(`Erreur outil ${id}: ${e.message}`, 'error');
+    }
+  }
+
+  function $escapeHtml(str) {
+    return `<span>${str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+  }
+
+  // ── LAN Scan ──────────────────────────────────────────────────────────────
+  async function lanscanScan() {
+    const statusEl = document.getElementById('lanscan-status-msg');
+    const loadingEl = document.getElementById('lanscan-loading');
+    const tableWrapper = document.getElementById('lanscan-table-wrapper');
+    const tbody = document.getElementById('lanscan-tbody');
+    const emptyEl = document.getElementById('lanscan-empty');
+    const countEl = document.getElementById('lanscan-stat-count');
+    const netEl = document.getElementById('lanscan-stat-net');
+    const scannerEl = document.getElementById('lanscan-stat-scanner');
+
+    statusEl.textContent = 'Scan en cours...';
+    loadingEl.classList.remove('hidden');
+    tableWrapper.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+
+    try {
+      const data = await fetchJSON('/lanscan/scan');
+      statusEl.textContent = `Terminé (${data.count} appareils)`;
+      loadingEl.classList.add('hidden');
+
+      if (data.count > 0) {
+        countEl.textContent = data.count;
+        scannerEl.textContent = data.scanner || '—';
+
+        if (data.networks && data.networks.length > 0) {
+          netEl.textContent = data.networks[0].network || '—';
+        }
+
+        tbody.innerHTML = data.devices.map(d => {
+          const mac = d.mac || '—';
+          const vendor = d.vendor || '—';
+          const hostname = d.hostname || '—';
+          const status = d.status === 'up' ? '🟢 En ligne' : '⚫ Hors ligne';
+          return `<tr class="trow text-sm">
+            <td class="py-3 px-4 mono text-xs">${d.ip}</td>
+            <td class="py-3 px-4 mono text-xs text-[var(--cyan)]">${mac}</td>
+            <td class="py-3 px-4 mono text-xs">${vendor}</td>
+            <td class="py-3 px-4 mono text-xs text-[var(--muted)]">${hostname}</td>
+            <td class="py-3 px-4 mono text-xs">${status}</td>
+            <td class="py-3 px-4 mono text-xs text-[var(--muted)]">${d.source || '—'}</td>
+          </tr>`;
+        }).join('');
+
+        tableWrapper.classList.remove('hidden');
+        lanscanStatus();
+        addLog(`${data.count} appareils trouvés sur le réseau local`, 'success');
+      } else {
+        emptyEl.classList.remove('hidden');
+        addLog('Aucun appareil détecté sur le réseau local', 'warn');
+      }
+    } catch(e) {
+      loadingEl.classList.add('hidden');
+      statusEl.textContent = 'Erreur: ' + e.message;
+      addLog('Erreur scan LAN: ' + e.message, 'error');
+    }
+  }
+
+  async function lanscanStatus() {
+    try {
+      const data = await fetchJSON('/lanscan/status');
+      const toolsStr = Object.entries(data.tools || {}).map(([k, v]) => v ? k : '').filter(Boolean).join(', ') || 'aucun';
+      document.getElementById('lanscan-stat-tools').textContent = toolsStr;
+      if (data.networks && data.networks.length > 0) {
+        document.getElementById('lanscan-stat-net').textContent = data.networks[0].network || '—';
+      }
+    } catch(e) {
+      /* ignore */
+    }
+  }
+
+  // ── Client-side LAN scan (navigateur/téléphone) ──────────────────────────
+  function getClientIP() {
+    return new Promise((resolve) => {
+      try {
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        pc.createDataChannel('');
+        pc.onicecandidate = (e) => {
+          if (!e.candidate) return;
+          const match = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/);
+          if (match) {
+            const ip = match[1];
+            if (!ip.startsWith('0.') && !ip.startsWith('127.')) {
+              pc.close();
+              resolve(ip);
+            }
+          }
+        };
+        pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
+        setTimeout(() => { pc.close(); resolve(null); }, 3000);
+      } catch(e) { resolve(null); }
+    });
+  }
+
+  async function showClientNetworkInfo() {
+    const infoEl = document.getElementById('lanscan-client-info');
+    const detailEl = document.getElementById('lanscan-client-detail');
+    const typeEl = document.getElementById('lanscan-client-type');
+    try {
+      const ip = await getClientIP();
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      let parts = [];
+      if (ip) parts.push('IP: ' + ip);
+      if (conn) {
+        const typeMap = { 'wifi': 'WiFi', 'cellular': '4G/5G', 'ethernet': 'Ethernet', 'bluetooth': 'Bluetooth', 'other': 'Autre', 'unknown': 'Inconnu' };
+        parts.push('Type: ' + (typeMap[conn.type] || conn.type || '—'));
+        if (conn.downlink) parts.push('Débit: ' + conn.downlink + ' Mbps');
+        if (conn.rtt) parts.push('Latence: ' + conn.rtt + ' ms');
+      }
+      detailEl.textContent = parts.join(' · ') || 'Informations non disponibles';
+      if (conn) {
+        const typeMap = { 'wifi': '🟢 WiFi', 'cellular': '📶 ' + (conn.effectiveType || 'Cellulaire'), 'ethernet': '🔌 Ethernet', 'bluetooth': '🔵 Bluetooth', 'other': '❓', 'unknown': '❓' };
+        typeEl.textContent = typeMap[conn.type] || '❓';
+        if (conn.type === 'wifi') typeEl.style.color = 'var(--acid)';
+        else if (conn.type === 'cellular') typeEl.style.color = 'var(--yellow)';
+        else typeEl.style.color = 'var(--cyan)';
+      }
+      infoEl.classList.remove('hidden');
+    } catch(e) { /* ignore */ }
+  }
+
+  async function clientLanscanScan() {
+    const statusEl = document.getElementById('client-lanscan-status');
+    const loadingEl = document.getElementById('client-lanscan-loading');
+    const tableWrapper = document.getElementById('client-lanscan-table-wrapper');
+    const tbody = document.getElementById('client-lanscan-tbody');
+    const emptyEl = document.getElementById('client-lanscan-empty');
+
+    statusEl.textContent = 'Détection du réseau...';
+    loadingEl.classList.remove('hidden');
+    tableWrapper.classList.add('hidden');
+    emptyEl.classList.add('hidden');
+
+    try {
+      const ip = await getClientIP();
+      if (!ip) {
+        statusEl.textContent = 'Impossible de détecter l\'IP locale';
+        loadingEl.classList.add('hidden');
+        emptyEl.classList.remove('hidden');
+        return;
+      }
+
+      const parts = ip.split('.');
+      const subnet = parts.slice(0, 3).join('.');
+      const myLast = parseInt(parts[3]);
+      const ports = [80, 443, 8080, 3000, 5000, 8000, 8443];
+      const results = [];
+      const scanned = new Set();
+
+      statusEl.textContent = 'Scan du sous-réseau ' + subnet + '.0/24...';
+
+      const promises = [];
+      for (let i = 1; i <= 254; i++) {
+        if (i === myLast) continue;
+        const target = subnet + '.' + i;
+        promises.push((async () => {
+          for (const port of ports) {
+            if (scanned.has(target)) break;
+            try {
+              const controller = new AbortController();
+              const t = setTimeout(() => controller.abort(), 800);
+              const res = await fetch('http://' + target + ':' + port + '/', {
+                method: 'HEAD',
+                mode: 'no-cors',
+                signal: controller.signal
+              });
+              clearTimeout(t);
+              scanned.add(target);
+              results.push({ ip: target, port: port, server: '', note: 'Service HTTP détecté' });
+              break;
+            } catch(e) { /* timeout or unreachable */ }
+          }
+        })());
+      }
+
+      await Promise.all(promises);
+
+      loadingEl.classList.add('hidden');
+
+      if (results.length > 0) {
+        results.sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+        tbody.innerHTML = results.map(r => `
+          <tr class="border-b border-[var(--border)] text-xs hover:bg-[var(--surface)]">
+            <td class="py-2 px-2 mono text-xs text-[var(--cyan)]">${r.ip}</td>
+            <td class="py-2 px-2 mono text-xs text-[var(--acid)]">${r.port}</td>
+            <td class="py-2 px-2 mono text-xs text-[var(--muted)]">${r.server || '—'}</td>
+            <td class="py-2 px-2 mono text-xs">${r.note}</td>
+          </tr>
+        `).join('');
+        tableWrapper.classList.remove('hidden');
+        statusEl.textContent = results.length + ' appareil(s) trouvé(s) depuis le navigateur';
+        addLog(results.length + ' appareils trouvés (scan navigateur)', 'success');
+      } else {
+        emptyEl.classList.remove('hidden');
+        statusEl.textContent = 'Aucun service HTTP détecté';
+        addLog('Aucun appareil détecté depuis le navigateur', 'warn');
+      }
+    } catch(e) {
+      loadingEl.classList.add('hidden');
+      statusEl.textContent = 'Erreur: ' + e.message;
+      addLog('Erreur scan navigateur: ' + e.message, 'error');
+    }
+  }
+
+  // ── Client-side WiFi / connexion info ────────────────────────────────────
+  function clientWifiInfo() {
+    const detailEl = document.getElementById('wifi-client-detail');
+    const typeEl = document.getElementById('wifi-client-type');
+    const ifaceEl = document.getElementById('wifi-client-iface');
+    const infoEl = document.getElementById('wifi-client-info');
+    const msg = document.getElementById('wifi-status-msg');
+
+    try {
+      const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      if (conn) {
+        const typeMap = { 'wifi': 'WiFi', 'cellular': 'Cellulaire', 'ethernet': 'Ethernet', 'bluetooth': 'Bluetooth', 'other': 'Autre', 'unknown': 'Inconnu' };
+        const emojiMap = { 'wifi': '🟢', 'cellular': '📶', 'ethernet': '🔌', 'bluetooth': '🔵', 'other': '❓', 'unknown': '❓' };
+        const type = typeMap[conn.type] || 'Inconnu';
+        const emoji = emojiMap[conn.type] || '❓';
+        const effective = conn.effectiveType ? ' (' + conn.effectiveType + ')' : '';
+        const downlink = conn.downlink ? ' · ' + conn.downlink + ' Mbps' : '';
+        const rtt = conn.rtt ? ' · ' + conn.rtt + ' ms' : '';
+        detailEl.textContent = 'Type: ' + type + effective + downlink + rtt;
+        typeEl.textContent = emoji + ' ' + type;
+        if (conn.type === 'wifi') { typeEl.style.color = 'var(--acid)'; detailEl.style.color = 'var(--acid)'; }
+        else if (conn.type === 'cellular') { typeEl.style.color = 'var(--yellow)'; detailEl.style.color = 'var(--yellow)'; }
+        else { typeEl.style.color = 'var(--cyan)'; detailEl.style.color = 'var(--cyan)'; }
+        ifaceEl.textContent = type;
+        ifaceEl.style.color = conn.type === 'wifi' ? 'var(--acid)' : 'var(--yellow)';
+        infoEl.classList.remove('hidden');
+        msg.textContent = 'Info client mise à jour';
+      } else {
+        detailEl.textContent = 'API Network Information non disponible';
+        typeEl.textContent = '❓';
+        ifaceEl.textContent = 'Non disponible';
+        infoEl.classList.remove('hidden');
+        msg.textContent = 'API non supportée';
+      }
+    } catch(e) {
+      msg.textContent = 'Erreur: ' + e.message;
     }
   }
 
@@ -1877,6 +2493,7 @@
     animateBars();
     loadIntegration();
     initTools();
+    lanscanStatus();
 
     // Ripple effect on all buttons
     document.addEventListener('click', function(e) {

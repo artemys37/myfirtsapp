@@ -51,23 +51,19 @@ services:
       dockerfile: Dockerfile
     container_name: netaudit_backend
     restart: unless-stopped
+    network_mode: "host"
     env_file:
       - .env
     environment:
-      MONGO_HOST: mongodb
+      MONGO_HOST: 127.0.0.1
       MONGO_PORT: 27017
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 587
-      SMTP_USER: 37artemys@gmail.com
-      SMTP_PASSWORD: uwgn czew ilok buio
-      EMAIL_TO: 37artemys@gmail.com
-    ports:
-      - "8000:8000"
+      SMTP_USER: xavierdavid139@gmail.com
+      SMTP_PASSWORD: thga sygn fxkm rchu
+      EMAIL_TO: xavierdavid139@gmail.com
     depends_on:
-      mongodb:
-        condition: service_healthy
-    networks:
-      - netaudit_net
+      - mongodb
     volumes:
       - ./backend:/app
       - tunnel_data:/tunnel
@@ -77,6 +73,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # ── Frontend Nginx ─────────────────────────────────────────────────────────
   frontend:

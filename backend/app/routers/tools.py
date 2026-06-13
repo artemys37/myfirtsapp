@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
-import asyncio, os, re, json
+import asyncio, os, re, json, uuid
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -67,13 +67,79 @@ class TsharkRequest(BaseModel):
     pcap_path: str
     filter: Optional[str] = None
 
+class PingRequest(BaseModel):
+    target: str
+    count: int = 4
+
+class BurpRequest(BaseModel):
+    target: str
+    scan_type: str = "crawl"  # crawl, scan, or both
+
+class WiresharkRequest(BaseModel):
+    interface: str = ""
+    count: int = 50
+    filter_expr: str = ""
+
+async def _ping_icmp(target: str, count: int = 4) -> str:
+    p = tool_path("ping")
+    if p:
+        cmd = [p, "-c", str(count), "-W", "3", target]
+        code, out, err = await run_cmd(cmd, timeout=30)
+        return out + "\n" + err
+    return ""
+
+async def _ping_tcp(target: str) -> str:
+    lines = []
+    for port, name in [(22, "SSH"), (80, "HTTP"), (443, "HTTPS"), (53, "DNS"), (3389, "RDP")]:
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(target, port), timeout=3
+            )
+            writer.close()
+            await writer.wait_closed()
+            lines.append(f"  ✓ Port {port}/{name} — CONNECTÉ")
+        except asyncio.TimeoutError:
+            lines.append(f"  ✗ Port {port}/{name} — Timeout")
+        except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
+            lines.append(f"  ✗ Port {port}/{name} — {str(e)[:40]}")
+    if not lines:
+        lines.append("  Aucun port testé")
+    return "Test TCP de connectivité:\n" + "\n".join(lines)
+
+async def _resolve_host(target: str) -> dict:
+    import socket
+    result = {"target": target, "ip": "", "hostname": "", "error": ""}
+    try:
+        ip = socket.gethostbyname(target)
+        result["ip"] = ip
+        if ip != target:
+            try:
+                hostname, _, _ = socket.gethostbyaddr(ip)
+                result["hostname"] = hostname
+            except Exception:
+                pass
+    except Exception as e:
+        result["error"] = str(e)
+    return result
+
 @router.get("/check")
 async def check_tools():
-    tools = ["nmap", "nikto", "gobuster", "hydra", "john", "hashcat", "7z", "tshark", "sqlmap", "dirb", "aircrack-ng", "airmon-ng", "airodump-ng", "aireplay-ng", "kismet", "wifite"]
+    tools = ["nmap", "nikto", "gobuster", "hydra", "john", "hashcat", "7z", "tshark", "sqlmap", "dirb", "aircrack-ng", "airmon-ng", "airodump-ng", "aireplay-ng", "kismet", "wifite", "ping", "wireshark", "burpsuite", "nessus"]
     result = {}
     for t in tools:
-        p = tool_path(t)
-        result[t] = {"installed": p is not None, "path": p}
+        if t == "wireshark":
+            p = tool_path("tshark")
+            result[t] = {"installed": p is not None, "path": p}
+        elif t == "burpsuite":
+            java = tool_path("java")
+            jar = os.path.isfile("/opt/burpsuite.jar")
+            result[t] = {"installed": java is not None and jar, "path": java or None}
+        elif t == "nessus":
+            nessus = tool_path("nessuscli") or tool_path("nessusd")
+            result[t] = {"installed": nessus is not None, "path": nessus}
+        else:
+            p = tool_path(t)
+            result[t] = {"installed": p is not None, "path": p}
     return result
 
 @router.post("/nmap/run")
@@ -110,9 +176,118 @@ async def run_gobuster(req: GobusterRequest):
         wordlist = "/usr/share/wordlists/dirb/common.txt"
         if not os.path.isfile(wordlist):
             wordlist = "/usr/share/dirb/wordlists/common.txt"
+    probe_path = "/" + str(uuid.uuid4())
+    probe_url = req.url.rstrip("/") + probe_path
+    exclude_len = None
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0) as hc:
+            pr = await hc.get(probe_url)
+            if pr.status_code == 200:
+                exclude_len = pr.headers.get("content-length") or str(len(pr.content))
+    except Exception:
+        pass
     cmd = [p, "dir", "-u", req.url, "-w", wordlist, "-q"]
+    if exclude_len:
+        cmd += ["--exclude-length", exclude_len]
     code, out, err = await run_cmd(cmd, timeout=180)
     return {"exit_code": code, "output": out + "\n" + err}
+
+
+class DirbRequest(BaseModel):
+    url: str
+
+
+@router.post("/dirb/run")
+async def run_dirb(req: DirbRequest):
+    p = tool_path("dirb")
+    if not p:
+        raise HTTPException(400, "DIRB non installé")
+    wordlist = "/usr/share/dirb/wordlists/common.txt"
+    if not os.path.isfile(wordlist):
+        wordlist = "/usr/share/dirb/wordlists/big.txt"
+    cmd = [p, req.url, wordlist, "-S"]
+    code, out, err = await run_cmd(cmd, timeout=180)
+    return {"exit_code": code, "output": out + "\n" + err}
+
+@router.post("/burp/run")
+async def run_burp(req: BurpRequest):
+    p = tool_path("java")
+    burp_jar = "/opt/burpsuite.jar"
+    if not p or not os.path.isfile(burp_jar):
+        raise HTTPException(400, "Burp Suite non installé (Java ou JAR manquant)")
+    if not req.target.startswith("http://") and not req.target.startswith("https://"):
+        raise HTTPException(400, "URL cible invalide. Utilisez http:// ou https://")
+    project_file = os.path.join(TOOLS_OUTPUT_DIR, f"burp_project_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.burp")
+    report_file = os.path.join(TOOLS_OUTPUT_DIR, f"burp_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.html")
+    cmd = [
+        p, "-jar", burp_jar,
+        "--headless",
+        "--project-file=" + project_file,
+        "--config-file=/dev/null",
+    ]
+    if req.scan_type in ("crawl", "both"):
+        cmd += ["--crawl-spider", req.target]
+    if req.scan_type in ("scan", "both"):
+        cmd += ["--active-scan", req.target]
+    cmd += ["--output-file=" + report_file]
+    code, out, err = await run_cmd(cmd, timeout=300)
+    report_text = ""
+    if os.path.isfile(report_file):
+        with open(report_file) as f:
+            report_text = f.read()
+        os.unlink(report_file)
+    if os.path.isfile(project_file):
+        os.unlink(project_file)
+    return {"exit_code": code, "output": out + "\n" + err + "\n\n[RAPPORT]\n" + report_text[:5000]}
+
+
+@router.post("/wireshark/run")
+async def run_wireshark(req: WiresharkRequest):
+    p = tool_path("tshark")
+    if not p:
+        raise HTTPException(400, "TShark (Wireshark CLI) non installé")
+    if req.interface:
+        iface = req.interface
+    else:
+        code, out, _ = await run_cmd([p, "-D"], timeout=10)
+        lines = [l.strip() for l in out.splitlines() if l.strip()]
+        ifaces = [l.split(".", 1)[-1].strip().split()[0] for l in lines if "." in l]
+        iface = ifaces[0] if ifaces else "eth0"
+    pcap_file = os.path.join(TOOLS_OUTPUT_DIR, f"tshark_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.pcap")
+    capture_cmd = [p, "-i", iface, "-a", f"packets:{req.count}", "-w", pcap_file]
+    if req.filter_expr:
+        capture_cmd += ["-f", req.filter_expr]
+    code, out, err = await run_cmd(capture_cmd, timeout=30)
+    if code != 0 or not os.path.isfile(pcap_file):
+        return {"exit_code": code, "output": out + "\n" + err}
+    analyze_cmd = [p, "-r", pcap_file, "-T", "fields", "-e", "frame.number", "-e", "frame.time", "-e", "ip.src", "-e", "ip.dst", "-e", "_ws.col.Protocol", "-e", "frame.len"]
+    code2, out2, err2 = await run_cmd(analyze_cmd, timeout=30)
+    summary = f"Interface: {iface}\nPaquets capturés: {req.count}\n\n[DÉTAILS]\n" + out2 + "\n" + err2
+    if os.path.isfile(pcap_file):
+        os.unlink(pcap_file)
+    return {"exit_code": code2 or code, "output": summary}
+
+
+@router.post("/nessus/run")
+async def run_nessus():
+    import httpx
+    nessus_url = os.getenv("NESSUS_URL", "https://localhost:8834")
+    nessus_key = os.getenv("NESSUS_ACCESS_KEY", "")
+    nessus_secret = os.getenv("NESSUS_SECRET_KEY", "")
+    if not nessus_key or not nessus_secret:
+        raise HTTPException(400, "Nessus non configuré. Définissez les variables NESSUS_ACCESS_KEY et NESSUS_SECRET_KEY")
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=30.0) as hc:
+            r = await hc.get(f"{nessus_url}/policies", headers={"X-ApiKeys": f"accessKey={nessus_key}; secretKey={nessus_secret}"})
+            if r.status_code == 200:
+                policies = r.json()
+                return {"exit_code": 0, "output": "Nessus connecté.\n\nPolitiques disponibles:\n" + "\n".join(p["name"] for p in policies.get("policies", []))}
+            else:
+                return {"exit_code": 1, "output": f"Nessus erreur: HTTP {r.status_code} - {r.text[:200]}"}
+    except Exception as e:
+        return {"exit_code": 1, "output": f"Connexion Nessus échouée: {str(e)}"}
+
 
 @router.post("/hydra/run")
 async def run_hydra(req: HydraRequest):
@@ -211,6 +386,37 @@ async def analyze_pcap(req: TsharkRequest):
     return {"exit_code": code, "output": out + "\n" + err}
 
 @router.get("/wordlists")
+@router.post("/ping/run")
+async def run_ping(req: PingRequest):
+    target = req.target.strip()
+    if not target:
+        raise HTTPException(400, "Cible requise")
+
+    output = ""
+    output += f"▶ Résolution: {target}\n"
+
+    resolved = await _resolve_host(target)
+    if resolved["error"]:
+        output += f"  ✗ {resolved['error']}\n"
+    else:
+        output += f"  ✓ IP: {resolved['ip']}\n"
+        if resolved["hostname"]:
+            output += f"  ✓ Hostname: {resolved['hostname']}\n"
+
+    output += f"\n▶ ICMP Ping ({req.count} essais):\n"
+    icmp_out = await _ping_icmp(target, req.count)
+    if icmp_out:
+        output += icmp_out
+    else:
+        output += "  ⚠ ping commande non disponible (fallback TCP)\n"
+
+    output += f"\n▶ TCP Connect (ports courants):\n"
+    tcp_out = await _ping_tcp(target)
+    output += tcp_out
+
+    return {"exit_code": 0, "output": output}
+
+
 async def list_wordlists():
     paths = [
         "/usr/share/wordlists/rockyou.txt",
